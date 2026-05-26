@@ -1,0 +1,805 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
+    <meta name="theme-color" content="#667eea">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="SaiTeck">
+    <title>SaiTeck - Sistema de Gestión</title>
+    <link rel="icon" type="image/png" href="img/logo_saiteck.png">
+    <link rel="apple-touch-icon" href="img/logo_saiteck.png">
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+
+    <!-- ═══════════════════════════════════════════════════════
+         PANTALLA DE AUTENTICACIÓN
+    ═══════════════════════════════════════════════════════ -->
+    <div id="authContainer" class="auth-container">
+        <div class="auth-card">
+            <img src="img/logo_saiteck.png" alt="SaiTeck" style="height:280px;object-fit:contain;margin:0 auto 16px;display:block;">
+            <p class="subtitle">Sistema de Administración de Inventarios y Venta</p>
+
+            <form id="loginForm" class="auth-form">
+                <div class="form-group">
+                    <label>Email</label>
+                    <input type="email" id="loginEmail" required placeholder="correo@ejemplo.com">
+                </div>
+                <div class="form-group">
+                    <label>Contraseña</label>
+                    <input type="password" id="loginPassword" required placeholder="••••••••">
+                </div>
+                <div id="loginError" class="auth-error"></div>
+                <button type="submit" class="btn btn-primary btn-block">Iniciar Sesión</button>
+            </form>
+
+            <div class="legal-links">
+                <a href="https://elaba987.github.io/pagina_inventario/" target="_blank">Contacto</a>
+                <span>•</span>
+                <a href="https://elaba987.github.io/pagina_inventario/" target="_blank">Términos y Condiciones</a>
+                <span>•</span>
+                <a href="https://elaba987.github.io/pagina_inventario/" target="_blank">Aviso Legal</a>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════
+         PANTALLA DE SELECCIÓN DE PERFIL
+    ═══════════════════════════════════════════════════════ -->
+    <div id="profileContainer" class="profile-container hidden">
+        <div class="profile-selection-card">
+            <div class="profile-header">
+                <img src="img/logo_saiteck.png" alt="SaiTeck" class="profile-logo" style="height:250px;object-fit:contain;display:block;margin:0 auto;">
+                <h2>SaiTeck</h2>
+                <p class="subtitle">Selecciona tu perfil para continuar</p>
+            </div>
+
+            <div id="profilesList" class="profiles-grid">
+                <!-- Los perfiles se cargarán dinámicamente -->
+            </div>
+
+            <div class="profile-footer">
+                <p class="profile-footer-text">
+                    <span id="profileUserEmail"></span>
+                </p>
+                <button id="btnLogoutFromProfiles" class="btn btn-secondary btn-block">
+                    🚪 Cerrar Sesión
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════
+         APLICACIÓN PRINCIPAL
+    ═══════════════════════════════════════════════════════ -->
+    <div id="appContainer" class="container hidden">
+
+        <!-- Botón hamburguesa (móvil) -->
+        <button class="menu-toggle" id="menuToggle">☰</button>
+
+        <!-- SIDEBAR -->
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <img src="img/logo_saiteck.png" alt="SaiTeck" style="width:100%;max-width:260px;object-fit:contain;display:block;margin:0 auto 8px;">
+                <p class="subtitle-sidebar">Sistema de Administración de Inventarios y Venta</p>
+            </div>
+            <nav class="menu" id="mainMenu"></nav>
+
+            <div class="user-info-bottom">
+                <div class="user-email">
+                    <small id="userEmail"></small>
+                </div>
+                <div class="legal-links-sidebar">
+                    <a href="https://elaba987.github.io/pagina_inventario/" target="_blank">Contacto</a>
+                    <span>•</span>
+                    <a href="https://elaba987.github.io/pagina_inventario/" target="_blank">Términos</a>
+                    <span>•</span>
+                    <a href="https://elaba987.github.io/pagina_inventario/" target="_blank">Aviso Legal</a>
+                </div>
+            </div>
+        </aside>
+
+        <!-- CONTENIDO PRINCIPAL -->
+        <main class="main-content">
+
+            <!-- ─── DASHBOARD ─── -->
+            <section id="dashboard" class="section">
+                <div class="card">
+                    <h3>📊 Panel de Control</h3>
+                    <div id="statsGrid" class="stats-grid"></div>
+                </div>
+                <div class="card" style="margin-top: 20px;">
+                    <h3>⚠️ Alertas de Stock Bajo</h3>
+                    <div id="alertasStock"></div>
+                </div>
+                <div class="card" style="margin-top: 20px;">
+                    <h3>🚚 Próximas Visitas de Proveedores</h3>
+                    <div id="proximasVisitas"></div>
+                </div>
+            </section>
+
+            <!-- ─── PRODUCTOS ─── -->
+            <section id="productos" class="section hidden">
+                <div class="card" id="cardAgregarProducto">
+                    <h3>Registrar Producto</h3>
+                    <form id="formProducto">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Clave</label>
+                                <div class="input-scan-group">
+                                    <input type="number" id="clave" required placeholder="Código del producto">
+                                    <button type="button" class="btn-scan btn-scan-primary" id="btnEscanerProducto" title="Escanear código de barras">📷</button>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label>Nombre</label>
+                                <input type="text" id="nombre" required placeholder="Nombre del producto">
+                            </div>
+                        </div>
+
+                        <!-- Checkbox granel -->
+                        <div class="form-group" style="display:flex;align-items:center;gap:10px;margin-bottom:15px;">
+                            <input type="checkbox" id="esGranel" style="width:20px;height:20px;accent-color:var(--color-primario);cursor:pointer;">
+                            <label for="esGranel" style="margin:0;cursor:pointer;font-weight:600;color:var(--color-primario);">
+                                ⚖️ Producto a Granel (venta por peso/kg)
+                            </label>
+                        </div>
+
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Precio de Compra (Proveedor)</label>
+                                <input type="number" step="0.01" id="precioCompra" required>
+                            </div>
+                            <div class="form-group" id="grupoPrecioVenta">
+                                <label id="labelPrecioVenta">Precio de Venta</label>
+                                <input type="number" step="0.01" id="precioVenta" required>
+                                <small id="grupoPrecioVentaKilo" class="hidden" style="color:var(--color-primario);font-weight:600;margin-top:4px;display:block;">💡 Precio por kilogramo</small>
+                            </div>
+                        </div>
+                        <div class="form-group" id="grupoStock">
+                            <label id="labelStock">Stock</label>
+                            <input type="number" step="0.001" id="stock" required>
+                            <small id="grupoKilos" class="hidden" style="color:var(--color-primario);font-weight:600;margin-top:4px;display:block;">📦 Cantidad en kilogramos disponibles</small>
+                        </div>
+                        <button type="submit" class="btn btn-primary">Registrar Producto</button>
+                    </form>
+                </div>
+
+                <div class="card">
+                    <h3>Lista de Productos</h3>
+                    <div style="margin-bottom:15px;">
+                        <button id="btnDescargarAlmacen" class="btn btn-success">📥 Descargar Inventario Completo</button>
+                    </div>
+                    <div class="search-bar">
+                        <input type="text" id="buscarProducto" placeholder="Buscar por nombre o clave...">
+                        <select id="ordenarStock">
+                            <option value="">Sin ordenar</option>
+                            <option value="mayor">Mayor stock</option>
+                            <option value="menor">Menor stock</option>
+                            <option value="az">Alfabético A-Z</option>
+                            <option value="za">Alfabético Z-A</option>
+                        </select>
+                    </div>
+                    <div id="mensajeProductos"></div>
+                    <div style="overflow-x:auto;">
+                        <table id="tablaProductos">
+                            <thead>
+                                <tr>
+                                    <th>Clave</th>
+                                    <th>Nombre</th>
+                                    <th>Precio Compra</th>
+                                    <th>Precio Venta</th>
+                                    <th>Stock</th>
+                                    <th>Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ─── VENTAS ─── -->
+            <section id="ventas" class="section hidden">
+                <div class="card">
+                    <h3>Realizar Venta</h3>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Buscar por Clave</label>
+                            <div class="input-scan-group">
+                                <input type="number" id="buscarClaveVenta" placeholder="Ingrese clave del producto">
+                                <button type="button" class="btn-scan btn-scan-primary" id="btnEscanerVenta" title="Escanear código de barras">📷</button>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label>Buscar por Nombre</label>
+                            <input type="text" id="buscarNombreVenta" placeholder="Buscar por nombre">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>O seleccionar de la lista</label>
+                        <select id="selectProductoVenta">
+                            <option value="">-- Seleccione --</option>
+                        </select>
+                    </div>
+                    <div id="infoProductoVenta"></div>
+
+                    <!-- Cantidad normal -->
+                    <div class="form-group" id="cantidadVentaGroup">
+                        <label>Cantidad</label>
+                        <input type="number" id="cantidadVenta" min="1" value="1" placeholder="Presiona Enter para agregar.">
+                    </div>
+
+                    <!-- Venta a granel -->
+                    <div id="granelVentaGroup" style="display:none;">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>💰 Precio a cobrar ($)</label>
+                                <input type="number" step="0.01" id="granelPrecio" placeholder="Ingresa el precio">
+                            </div>
+                            <div class="form-group">
+                                <label>⚖️ Gramaje (gramos)</label>
+                                <input type="number" step="1" id="granelGramos" placeholder="O ingresa los gramos">
+                            </div>
+                        </div>
+                        <p style="font-size:13px;color:#718096;margin-top:5px;">
+                            Puedes calcular uno a partir del otro automáticamente.
+                        </p>
+                    </div>
+
+                    <button id="btnAgregarVenta" class="btn btn-success">Agregar a Venta</button>
+
+                    <div id="listaVenta" style="margin-top:30px;"></div>
+
+                    <div style="margin-top:20px;padding:20px;background:#f7fafc;border-radius:8px;">
+                        <h3>Total: $<span id="totalVenta">0.00</span></h3>
+                        <div class="form-row" style="margin-top:15px;">
+                            <div class="form-group">
+                                <label>Pago del Cliente</label>
+                                <input type="number" step="0.01" id="pagoCliente" placeholder="0.00">
+                            </div>
+                            <div class="form-group">
+                                <label>Cambio</label>
+                                <input type="text" id="cambioVenta" readonly style="background:#e2e8f0;font-weight:bold;">
+                            </div>
+                        </div>
+                        <div style="display:flex;gap:10px;margin-top:10px;">
+                            <button id="btnPagoExacto" class="btn btn-secondary">💵 Pago Exacto</button>
+                            <button id="btnFinalizarVenta" class="btn btn-primary">Finalizar Venta</button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ─── PROVEEDORES ─── -->
+            <section id="proveedores" class="section hidden">
+                <div class="card">
+                    <h3>Registro de Proveedores</h3>
+                    <form id="formProveedor">
+                        <div class="form-group">
+                            <label>Nombre del Proveedor *</label>
+                            <input type="text" id="nombreProveedor" required>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Teléfono (opcional)</label>
+                                <input type="tel" id="telefonoProveedor">
+                            </div>
+                            <div class="form-group">
+                                <label>Email (opcional)</label>
+                                <input type="email" id="emailProveedor">
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label>Tipo de Reparto</label>
+                            <select id="tipoReparto">
+                                <option value="manual">Manual (Fecha específica)</option>
+                                <option value="constante">Constante (Días programados)</option>
+                            </select>
+                        </div>
+                        <div class="form-group" id="grupoFechaManual">
+                            <label>Próxima Visita</label>
+                            <input type="date" id="fechaVisita">
+                        </div>
+                        <div id="grupoDiasConstantes" class="hidden">
+                            <label>Días de Reparto</label>
+                            <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:10px;">
+                                <label style="display:flex;align-items:center;gap:5px;"><input type="checkbox" name="diasReparto" value="0"> Domingo</label>
+                                <label style="display:flex;align-items:center;gap:5px;"><input type="checkbox" name="diasReparto" value="1"> Lunes</label>
+                                <label style="display:flex;align-items:center;gap:5px;"><input type="checkbox" name="diasReparto" value="2"> Martes</label>
+                                <label style="display:flex;align-items:center;gap:5px;"><input type="checkbox" name="diasReparto" value="3"> Miércoles</label>
+                                <label style="display:flex;align-items:center;gap:5px;"><input type="checkbox" name="diasReparto" value="4"> Jueves</label>
+                                <label style="display:flex;align-items:center;gap:5px;"><input type="checkbox" name="diasReparto" value="5"> Viernes</label>
+                                <label style="display:flex;align-items:center;gap:5px;"><input type="checkbox" name="diasReparto" value="6"> Sábado</label>
+                            </div>
+                            <div class="form-group" style="margin-top:15px;">
+                                <label>Frecuencia de Reparto</label>
+                                <select id="frecuenciaReparto">
+                                    <option value="1">Cada semana</option>
+                                    <option value="2">Cada 2 semanas (quincenal)</option>
+                                    <option value="3">Cada 3 semanas</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div id="mensajeProveedor"></div>
+                        <button type="submit" class="btn btn-primary" style="margin-top:15px;">Registrar Proveedor</button>
+                    </form>
+                </div>
+
+                <div class="card">
+                    <h3>Lista de Proveedores</h3>
+                    <div class="search-bar">
+                        <input type="text" id="buscarProveedor" placeholder="Buscar proveedor...">
+                    </div>
+                    <div style="overflow-x:auto;">
+                        <table id="tablaProveedores">
+                            <thead>
+                                <tr>
+                                    <th>Nombre</th>
+                                    <th>Teléfono</th>
+                                    <th>Email</th>
+                                    <th>Próxima Visita</th>
+                                    <th>Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ─── REPORTES ─── -->
+            <section id="reportes" class="section hidden">
+                <div class="card">
+                    <h3>Reportes y Analíticas</h3>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Tipo de Reporte</label>
+                            <select id="tipoReporte">
+                                <option value="diario">Ventas del Día</option>
+                                <option value="semanal">Ventas de la Semana</option>
+                                <option value="mensual">Ventas del Mes</option>
+                                <option value="anual">Ventas del Año</option>
+                                <option value="fecha">Día Específico</option>
+                                <option value="rango">Rango de Fechas</option>
+                                <option value="mes-especifico">Mes Específico</option>
+                                <option value="año-especifico">Año Específico</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div id="opcionesFecha" class="hidden" style="margin-top:15px;">
+                        <div id="opcionFechaEspecifica" class="hidden">
+                            <div class="form-group">
+                                <label>Seleccionar Fecha</label>
+                                <input type="date" id="fechaEspecifica">
+                            </div>
+                        </div>
+                        <div id="opcionRangoFechas" class="hidden">
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label>Fecha Inicio</label>
+                                    <input type="date" id="fechaInicio">
+                                </div>
+                                <div class="form-group">
+                                    <label>Fecha Fin</label>
+                                    <input type="date" id="fechaFin">
+                                </div>
+                            </div>
+                        </div>
+                        <div id="opcionMesEspecifico" class="hidden">
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label>Mes</label>
+                                    <select id="mesEspecifico">
+                                        <option value="0">Enero</option>
+                                        <option value="1">Febrero</option>
+                                        <option value="2">Marzo</option>
+                                        <option value="3">Abril</option>
+                                        <option value="4">Mayo</option>
+                                        <option value="5">Junio</option>
+                                        <option value="6">Julio</option>
+                                        <option value="7">Agosto</option>
+                                        <option value="8">Septiembre</option>
+                                        <option value="9">Octubre</option>
+                                        <option value="10">Noviembre</option>
+                                        <option value="11">Diciembre</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label>Año</label>
+                                    <input type="number" id="añoMesEspecifico" min="2020" max="2030" value="2025">
+                                </div>
+                            </div>
+                        </div>
+                        <div id="opcionAñoEspecifico" class="hidden">
+                            <div class="form-group">
+                                <label>Año</label>
+                                <input type="number" id="añoEspecifico" min="2020" max="2030" value="2025">
+                            </div>
+                        </div>
+                    </div>
+
+                    <button id="btnGenerarReporte" class="btn btn-primary">Generar Reporte</button>
+                    <div id="contenidoReporte"></div>
+                </div>
+            </section>
+
+            <!-- ─── CONFIGURACIÓN ─── -->
+            <section id="configuracion" class="section hidden">
+                <div class="card">
+                    <h3>⚙️ Configuración</h3>
+
+                    <!-- Cuenta -->
+                    <div class="config-section">
+                        <h4>Cuenta</h4>
+                        <div class="config-item">
+                            <div>
+                                <strong>Usuario actual</strong>
+                                <p id="configUserEmail" style="color:#718096;font-size:14px;"></p>
+                                <p id="configProfileName" style="color:#4a5568;font-size:16px;font-weight:600;margin-top:5px;"></p>
+                                <p id="configProfileRole" style="color:#718096;font-size:13px;"></p>
+
+                                <!-- Badge de plan de suscripción -->
+                                <div id="configPlanBadge" style="margin-top:10px;">
+                                    <!-- Se rellena dinámicamente por app.js -->
+                                </div>
+                            </div>
+                            <div style="display:flex;gap:10px;flex-wrap:wrap;">
+                                <button id="btnChangeProfile" class="btn btn-primary">Cambiar Perfil</button>
+                                <button id="btnConfigLogout" class="btn btn-danger">Cerrar Sesión</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Gestión de Usuarios (solo administradores) -->
+                    <div id="seccionGestionUsuarios" class="config-section hidden">
+                        <h4>Gestión de Usuarios y Perfiles</h4>
+                        <p class="desc-limite-usuarios" style="color:#718096;margin-bottom:20px;">
+                            Como administrador, puedes crear usuarios con diferentes permisos.
+                        </p>
+                        <button id="btnCrearUsuario" class="btn btn-primary" style="margin-bottom:20px;">
+                            ➕ Crear Nuevo Usuario
+                        </button>
+                        <div id="listaUsuarios">
+                            <!-- Los usuarios se cargarán dinámicamente -->
+                        </div>
+                    </div>
+
+                    <!-- Personalización de Colores -->
+                    <div class="config-section">
+                        <h4>Personalización de Colores</h4>
+                        <p style="color:#718096;margin-bottom:20px;">
+                            Personaliza los colores de la aplicación. Los cambios se sincronizarán en todos tus dispositivos.
+                        </p>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Color Principal</label>
+                                <div class="color-picker-group">
+                                    <input type="color" id="colorPrimario" value="#667eea">
+                                    <span id="colorPrimarioText">#667eea</span>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label>Color Secundario</label>
+                                <div class="color-picker-group">
+                                    <input type="color" id="colorSecundario" value="#764ba2">
+                                    <span id="colorSecundarioText">#764ba2</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Color Sidebar</label>
+                                <div class="color-picker-group">
+                                    <input type="color" id="colorSidebar" value="#2d3748">
+                                    <span id="colorSidebarText">#2d3748</span>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label>Color de Éxito</label>
+                                <div class="color-picker-group">
+                                    <input type="color" id="colorExito" value="#48bb78">
+                                    <span id="colorExitoText">#48bb78</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Color de Peligro</label>
+                                <div class="color-picker-group">
+                                    <input type="color" id="colorPeligro" value="#f56565">
+                                    <span id="colorPeligroText">#f56565</span>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label>Color de Advertencia</label>
+                                <div class="color-picker-group">
+                                    <input type="color" id="colorAdvertencia" value="#ed8936">
+                                    <span id="colorAdvertenciaText">#ed8936</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div style="display:flex;gap:10px;margin-top:20px;flex-wrap:wrap;">
+                            <button id="btnAplicarColores" class="btn btn-primary">Aplicar Colores</button>
+                            <button id="btnResetColores" class="btn btn-secondary">Restablecer Predeterminados</button>
+                        </div>
+                    </div>
+
+                </div>
+            </section>
+
+        </main>
+    </div><!-- /appContainer -->
+
+    <!-- ═══════════════════════════════════════════════════════
+         MODALES
+    ═══════════════════════════════════════════════════════ -->
+
+    <!-- Modal Editar Producto -->
+    <div id="modalEditarProducto" class="modal-overlay hidden" style="display:none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Editar Producto</h3>
+                <button class="modal-close" id="cerrarModalEditarProducto">×</button>
+            </div>
+            <form id="formEditarProducto">
+                <input type="hidden" id="editProductoId">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Clave</label>
+                        <input type="number" id="editClave" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Nombre</label>
+                        <input type="text" id="editNombre" required>
+                    </div>
+                </div>
+                <div class="form-group" style="display:flex;align-items:center;gap:10px;margin-bottom:15px;">
+                    <input type="checkbox" id="editEsGranel" style="width:20px;height:20px;accent-color:var(--color-primario);cursor:pointer;">
+                    <label for="editEsGranel" style="margin:0;cursor:pointer;font-weight:600;color:var(--color-primario);">
+                        ⚖️ Producto a Granel (venta por peso/kg)
+                    </label>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Precio de Compra</label>
+                        <input type="number" step="0.01" id="editPrecioCompra" required>
+                    </div>
+                    <div class="form-group">
+                        <label id="labelEditPrecioVenta">Precio de Venta</label>
+                        <input type="number" step="0.01" id="editPrecioVenta" required>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label id="labelEditStock">Stock</label>
+                    <input type="number" step="0.001" id="editStock" required>
+                </div>
+                <button type="submit" class="btn btn-primary">Guardar Cambios</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal Editar Proveedor -->
+    <div id="modalEditarProveedor" class="modal-overlay hidden" style="display:none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Editar Proveedor</h3>
+                <button class="modal-close" id="cerrarModalEditarProveedor">×</button>
+            </div>
+            <form id="formEditarProveedor">
+                <input type="hidden" id="editProveedorId">
+                <input type="hidden" id="editTipoRepartoProveedor">
+                <div class="form-group">
+                    <label>Nombre</label>
+                    <input type="text" id="editNombreProveedor" required>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Teléfono</label>
+                        <input type="tel" id="editTelefonoProveedor">
+                    </div>
+                    <div class="form-group">
+                        <label>Email</label>
+                        <input type="email" id="editEmailProveedor">
+                    </div>
+                </div>
+                <div id="editGrupoFechaManual">
+                    <div class="form-group">
+                        <label>Próxima Visita</label>
+                        <input type="date" id="editFechaVisita">
+                    </div>
+                </div>
+                <div id="editGrupoDiasConstantes" class="hidden">
+                    <label>Días de Reparto</label>
+                    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:10px;">
+                        <label style="display:flex;align-items:center;gap:5px;"><input type="checkbox" name="editDiasReparto" value="0"> Domingo</label>
+                        <label style="display:flex;align-items:center;gap:5px;"><input type="checkbox" name="editDiasReparto" value="1"> Lunes</label>
+                        <label style="display:flex;align-items:center;gap:5px;"><input type="checkbox" name="editDiasReparto" value="2"> Martes</label>
+                        <label style="display:flex;align-items:center;gap:5px;"><input type="checkbox" name="editDiasReparto" value="3"> Miércoles</label>
+                        <label style="display:flex;align-items:center;gap:5px;"><input type="checkbox" name="editDiasReparto" value="4"> Jueves</label>
+                        <label style="display:flex;align-items:center;gap:5px;"><input type="checkbox" name="editDiasReparto" value="5"> Viernes</label>
+                        <label style="display:flex;align-items:center;gap:5px;"><input type="checkbox" name="editDiasReparto" value="6"> Sábado</label>
+                    </div>
+                    <div class="form-group" style="margin-top:15px;">
+                        <label>Frecuencia de Reparto</label>
+                        <select id="editFrecuenciaReparto">
+                            <option value="1">Cada semana</option>
+                            <option value="2">Cada 2 semanas (quincenal)</option>
+                            <option value="3">Cada 3 semanas</option>
+                        </select>
+                    </div>
+                </div>
+                <button type="submit" class="btn btn-primary" style="margin-top:15px;">Guardar Cambios</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal Programar Siguiente Visita -->
+    <div id="modalSiguienteVisita" class="modal-overlay hidden" style="display:none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Programar Siguiente Visita</h3>
+                <button class="modal-close" id="cerrarModalSiguienteVisita">×</button>
+            </div>
+            <input type="hidden" id="siguienteVisitaId">
+            <p>¿Desea programar la siguiente visita de este proveedor?</p>
+            <div class="form-group">
+                <label>Fecha de la siguiente visita</label>
+                <input type="date" id="siguienteVisitaFecha">
+            </div>
+            <div style="display:flex;gap:10px;margin-top:20px;">
+                <button id="btnConfirmarSiguienteVisita" class="btn btn-primary">Sí, Programar</button>
+                <button id="btnCancelarSiguienteVisita" class="btn btn-secondary">No</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════
+         MODAL CREAR / EDITAR USUARIO
+         seccionPermisos muestra las opciones de nivel de acceso
+         solo para empleados. Para administradores se oculta porque
+         el admin siempre hereda el techo completo del plan.
+    ═══════════════════════════════════════════════════════ -->
+    <div id="modalUsuario" class="modal-overlay hidden" style="display:none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="tituloModalUsuario">Crear Usuario</h3>
+                <button class="modal-close" id="cerrarModalUsuario">×</button>
+            </div>
+            <form id="formUsuario">
+                <input type="hidden" id="usuarioId">
+
+                <!-- Nombre -->
+                <div class="form-group">
+                    <label>Nombre del Usuario *</label>
+                    <input type="text" id="nombreUsuario" required placeholder="Ej: Juan Pérez">
+                </div>
+
+                <!-- Rol -->
+                <div class="form-group">
+                    <label>Rol *</label>
+                    <select id="rolUsuario" required>
+                        <option value="empleado">Empleado</option>
+                        <option value="administrador">Administrador</option>
+                    </select>
+                    <small style="color:#718096;margin-top:5px;display:block;">
+                        Los administradores tienen acceso completo al sistema (acotado al plan contratado).
+                    </small>
+                </div>
+
+                <!-- NIP -->
+                <div class="nip-field-container">
+                    <h5>🔒 NIP de Acceso (4 dígitos)</h5>
+                    <div class="nip-display">
+                        <span id="displayNIP" class="nip-value hidden-nip">••••</span>
+                        <button type="button" class="nip-toggle" id="toggleNIP" title="Mostrar/Ocultar NIP">👁️</button>
+                    </div>
+                    <div class="nip-edit-controls" id="nipEditControls">
+                        <input type="text" id="inputNIP" maxlength="4" pattern="[0-9]{4}" placeholder="0000">
+                        <button type="button" class="btn btn-secondary" id="btnGenerarNIP">🎲 Generar</button>
+                    </div>
+                </div>
+
+                <!-- Nivel de acceso (solo empleados) -->
+                <div id="seccionPermisos" class="form-group" style="margin-top:20px;">
+                    <label style="font-weight:700;font-size:15px;">🔐 Permisos</label>
+                    <small style="color:#718096;display:block;margin-bottom:10px;">
+                        Define qué acciones puede realizar este empleado.
+                        Los módulos bloqueados por tu plan aparecen deshabilitados.
+                    </small>
+                    <div id="listadoPermisos" style="max-height:300px;overflow-y:auto;border:2px solid #e2e8f0;border-radius:8px;padding:15px;background:#f7fafc;">
+                        <!-- Los permisos se cargarán dinámicamente -->
+                    </div>
+                </div>
+
+                <!-- Botones -->
+                <div style="display:flex;gap:10px;margin-top:20px;">
+                    <button type="submit" class="btn btn-primary">Guardar Usuario</button>
+                    <button type="button" class="btn btn-secondary" id="btnCancelarUsuario">Cancelar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════
+         MODAL VERIFICACIÓN DE NIP
+    ═══════════════════════════════════════════════════════ -->
+    <div id="modalNIP" class="nip-modal hidden" style="display:none;">
+        <div class="nip-modal-content">
+            <div class="nip-modal-header">
+                <h3>🔒 Ingresa tu NIP</h3>
+                <p id="nipUsuarioNombre"></p>
+            </div>
+            <div class="nip-input-container">
+                <input type="password" class="nip-digit" maxlength="1" id="nip1" readonly>
+                <input type="password" class="nip-digit" maxlength="1" id="nip2" readonly>
+                <input type="password" class="nip-digit" maxlength="1" id="nip3" readonly>
+                <input type="password" class="nip-digit" maxlength="1" id="nip4" readonly>
+            </div>
+            <div class="nip-keypad">
+                <button class="nip-key" data-digit="1">1</button>
+                <button class="nip-key" data-digit="2">2</button>
+                <button class="nip-key" data-digit="3">3</button>
+                <button class="nip-key" data-digit="4">4</button>
+                <button class="nip-key" data-digit="5">5</button>
+                <button class="nip-key" data-digit="6">6</button>
+                <button class="nip-key" data-digit="7">7</button>
+                <button class="nip-key" data-digit="8">8</button>
+                <button class="nip-key" data-digit="9">9</button>
+                <button class="nip-key delete" data-digit="clear">⌫</button>
+                <button class="nip-key" data-digit="0">0</button>
+                <button class="nip-key delete" data-digit="cancel">✕</button>
+            </div>
+            <div id="nipError" class="nip-error"></div>
+        </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════
+         MODAL ESCÁNER DE CÓDIGO DE BARRAS
+    ═══════════════════════════════════════════════════════ -->
+    <div id="modalEscaner" class="escaner-overlay hidden" style="display:none;">
+        <div class="escaner-container">
+            <div class="escaner-header">
+                <span class="escaner-titulo">📷 Escanear Código</span>
+                <button class="escaner-close" id="btnCerrarEscaner">✕</button>
+            </div>
+            <div class="escaner-visor">
+                <video id="escanerVideo" autoplay playsinline muted></video>
+                <div class="escaner-guia">
+                    <div class="escaner-marco">
+                        <span class="esquina tl"></span>
+                        <span class="esquina tr"></span>
+                        <span class="esquina bl"></span>
+                        <span class="esquina br"></span>
+                        <div class="escaner-linea"></div>
+                    </div>
+                </div>
+            </div>
+            <p id="escanerStatus" class="escaner-status">Iniciando cámara...</p>
+            <div id="escanerControlesAvanzados" class="escaner-controles-avanzados" style="display:none;">
+                <!-- Controles avanzados inyectados por escaner.js -->
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════
+         SCRIPTS
+    ═══════════════════════════════════════════════════════ -->
+    <!-- ZXing - Lector de códigos de barras -->
+    <script src="https://unpkg.com/@zxing/library@0.20.0/umd/index.min.js"></script>
+
+    <!-- Firebase SDKs -->
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+
+    <!-- Configuración de Firebase -->
+    <script src="js/firebase-config.js"></script>
+
+    <!-- Aplicación -->
+    <script type="module" src="js/app.js"></script>
+</body>
+</html>

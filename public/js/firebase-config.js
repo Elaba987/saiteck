@@ -1,0 +1,207 @@
+// firebase-config.js - Configuración de Firebase
+
+const firebaseConfig = {
+  apiKey: "AIzaSyCqdr82zx0SxFTpba6DRO8eKnHkTlMOWX8",
+  authDomain: "inventario-tienda-f14b4.firebaseapp.com",
+  projectId: "inventario-tienda-f14b4",
+  storageBucket: "inventario-tienda-f14b4.firebasestorage.app",
+  messagingSenderId: "1000747147437",
+  appId: "1:1000747147437:web:6affdd55131bdaca702624"
+};
+
+// Inicializar Firebase
+firebase.initializeApp(firebaseConfig);
+
+// Referencias a servicios
+window.auth = firebase.auth();
+window.db   = firebase.firestore();
+
+// ─────────────────────────────────────────────────────────────
+// ESTADO GLOBAL DE LA CUENTA
+// window.currentUser       → usuario autenticado en Firebase Auth
+// window.cuentaAccesoTotal → booleano leído desde users/{uid}
+//                            true  = suscripción completa (tú lo activas)
+//                            false = suscripción básica (default)
+// ─────────────────────────────────────────────────────────────
+window.currentUser       = null;
+window.cuentaAccesoTotal = false;   // techo máximo de la cuenta
+
+// ─────────────────────────────────────────────────────────────
+// Lee el documento raíz de la cuenta y extrae el plan de suscripción.
+// Tú (el propietario del SaaS) controlas este campo directamente
+// en Firestore Console: users/{uid}  →  accesoTotal: true/false
+// ─────────────────────────────────────────────────────────────
+async function cargarSuscripcionCuenta(uid) {
+  try {
+    const docSnap = await window.db.collection('users').doc(uid).get();
+
+    if (docSnap.exists) {
+      const data = docSnap.data();
+      // Plan Basic = false | Plan Pro = true
+      window.cuentaAccesoTotal = data.accesoTotal === true;
+      // Limite de usuarios secundarios controlado desde Firestore Console
+      // Firestore: users/{uid} -> maxUsuarios: 3   (tú defines el número)
+      // Si no existe el campo, default conservador = 5
+      window.cuentaMaxUsuarios = typeof data.maxUsuarios === 'number'
+        ? data.maxUsuarios
+        : 5;
+    } else {
+      // Documento aún no creado → crearlo con plan Basic por defecto
+      await window.db.collection('users').doc(uid).set({
+        accesoTotal: false,
+        maxUsuarios: 5,
+        creadoEn:    firebase.firestore.FieldValue.serverTimestamp()
+      });
+      window.cuentaAccesoTotal = false;
+      window.cuentaMaxUsuarios = 5;
+    }
+
+    console.log(
+      `[Suscripción] ${uid} → plan: ${window.cuentaAccesoTotal ? 'Pro' : 'Basic'} | maxUsuarios: ${window.cuentaMaxUsuarios}`
+    );
+  } catch (error) {
+    console.error('Error al leer suscripción de cuenta:', error);
+    window.cuentaAccesoTotal = false;
+    window.cuentaMaxUsuarios = 5;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// Observador de autenticación
+// ─────────────────────────────────────────────────────────────
+window.auth.onAuthStateChanged(async (user) => {
+  window.currentUser = user;
+
+  if (user) {
+    console.log('Usuario autenticado:', user.email);
+
+    // 1. Leer plan de suscripción ANTES de mostrar cualquier pantalla
+    await cargarSuscripcionCuenta(user.uid);
+
+    // 2. Mostrar selección de perfil
+    mostrarSeleccionPerfil();
+  } else {
+    console.log('Usuario no autenticado');
+    window.cuentaAccesoTotal = false;
+    mostrarAuth();
+  }
+});
+
+// ─────────────────────────────────────────────────────────────
+// Funciones de navegación entre pantallas
+// ─────────────────────────────────────────────────────────────
+function mostrarAuth() {
+  document.getElementById('authContainer').classList.remove('hidden');
+  document.getElementById('profileContainer').classList.add('hidden');
+  document.getElementById('appContainer').classList.add('hidden');
+}
+
+function mostrarSeleccionPerfil() {
+  document.getElementById('authContainer').classList.add('hidden');
+  document.getElementById('profileContainer').classList.remove('hidden');
+  document.getElementById('appContainer').classList.add('hidden');
+
+  if (window.appInstance && window.appInstance.usuariosManager) {
+    window.appInstance.cargarPantallaPerfil();
+  }
+}
+
+function mostrarApp() {
+  document.getElementById('authContainer').classList.add('hidden');
+  document.getElementById('profileContainer').classList.add('hidden');
+  document.getElementById('appContainer').classList.remove('hidden');
+
+  const userEmailElement = document.getElementById('userEmail');
+  if (userEmailElement && window.currentUser) {
+    userEmailElement.textContent = window.currentUser.email;
+  }
+
+  if (window.appInstance && typeof window.appInstance.onUserAuthenticated === 'function') {
+    window.appInstance.onUserAuthenticated();
+  }
+}
+
+// Exponer globalmente
+window.mostrarApp              = mostrarApp;
+window.mostrarSeleccionPerfil  = mostrarSeleccionPerfil;
+
+// ─────────────────────────────────────────────────────────────
+// Inicialización del botón de logout del sidebar
+// ─────────────────────────────────────────────────────────────
+function inicializarLogout() {
+  setTimeout(() => {
+    const btnLogout = document.getElementById('btnLogout');
+    if (btnLogout && !btnLogout.hasAttribute('data-initialized')) {
+      btnLogout.setAttribute('data-initialized', 'true');
+
+      btnLogout.addEventListener('click', async (e) => {
+        e.preventDefault();
+        if (confirm('¿Cerrar sesión?')) {
+          try {
+            await window.auth.signOut();
+          } catch (error) {
+            console.error('Error al cerrar sesión:', error);
+            alert('Error al cerrar sesión: ' + error.message);
+          }
+        }
+      });
+    }
+  }, 500);
+}
+
+// ─────────────────────────────────────────────────────────────
+// DOMContentLoaded: login y logout desde pantalla de perfiles
+// ─────────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+
+  // Formulario de login
+  const loginForm = document.getElementById('loginForm');
+  if (loginForm) {
+    loginForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const email     = document.getElementById('loginEmail').value;
+      const password  = document.getElementById('loginPassword').value;
+      const errorDiv  = document.getElementById('loginError');
+
+      try {
+        await window.auth.signInWithEmailAndPassword(email, password);
+        errorDiv.textContent = '';
+      } catch (error) {
+        console.error('Error en login:', error);
+        errorDiv.textContent = obtenerMensajeError(error.code);
+      }
+    });
+  }
+
+  // Botón cerrar sesión desde pantalla de selección de perfil
+  const btnLogoutFromProfiles = document.getElementById('btnLogoutFromProfiles');
+  if (btnLogoutFromProfiles) {
+    btnLogoutFromProfiles.addEventListener('click', async () => {
+      if (confirm('¿Cerrar sesión?')) {
+        try {
+          await window.auth.signOut();
+        } catch (error) {
+          console.error('Error al cerrar sesión:', error);
+          alert('Error al cerrar sesión');
+        }
+      }
+    });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────
+// Mensajes de error de autenticación
+// ─────────────────────────────────────────────────────────────
+function obtenerMensajeError(code) {
+  const mensajes = {
+    'auth/email-already-in-use':   'Este email ya está registrado',
+    'auth/invalid-email':          'Email inválido',
+    'auth/user-not-found':         'Usuario no encontrado',
+    'auth/wrong-password':         'Contraseña incorrecta',
+    'auth/weak-password':          'La contraseña es muy débil',
+    'auth/too-many-requests':      'Demasiados intentos. Intenta más tarde',
+    'auth/network-request-failed': 'Error de conexión. Verifica tu internet',
+    'auth/invalid-credential':     'Credenciales inválidas. Verifica tu email y contraseña'
+  };
+  return mensajes[code] || 'Error de autenticación. Intenta nuevamente';
+}

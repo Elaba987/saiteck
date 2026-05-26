@@ -1,0 +1,155 @@
+cerrar sesi�n no cierra la sesi�n del usuario logeado. 
+
+Los colores no se aplican al ser cambiados en la configuraci�n
+
+Lo ideal seria separar el apartado de configuraci�n como un modulo js aparte. Arregla los errores y separa de los otros modulos lo relacionado a js
+
+
+_______________
+El sistema deber� mostrar una pantalla de selecci�n de usuario una vez se haya autenticado, esta pantalla deber� permitir entrar en el perfil de un usuario, dichos usuarios deber�n tener dos roles:
+
+Administrador: Tiene acceso al sistema total y administra a empleados.
+
+Empleados: El acceso es definido por el administrador.
+
+El administrador podr� crear usuarios (m�ximo 5), cada usuario deber� tener un nombre, un rol y acceso al sistema controlado (el administrador podr� elegir que acciones puede realizar y que acciones no marcando una casilla en su usuario)
+
+El administrador podr� crear o eliminar usuarios desde configuraci�n.
+
+El administrador podr� cambiar los permisos del usuario en cualquier momento accediendo a configuraci�n y seleccionando al usuario.
+
+Todos estos usuarios forman parte del usuario autenticado en firebase, por lo que comparten base de datos con el usuario original.
+
+El sistema deber� incluir un usuario Administrador por defecto.
+
+
+
+
+Descripci�n funcional del sistema de usuarios
+
+El sistema deber� mostrar una pantalla de selecci�n de perfil una vez que el usuario haya sido autenticado.
+
+Esta pantalla permitir� acceder a los distintos perfiles asociados a la cuenta principal.
+
+El sistema manejar� dos tipos de roles:
+
+?Y"? Administrador
+
+Tiene acceso completo al sistema.
+
+Puede administrar usuarios.
+
+Configura permisos.
+
+Gestiona empleados.
+
+?Y"? Empleado
+
+Tiene acceso limitado.
+
+Sus permisos son definidos por el administrador.
+
+El administrador podr� crear hasta un m�ximo de cinco usuarios secundarios.
+
+Cada usuario deber� contar con:
+
+Nombre identificador
+
+Rol asignado
+
+Conjunto de permisos configurables
+
+Los permisos se asignar�n mediante una interfaz gr�fica basada en opciones seleccionables (casillas).
+
+El administrador podr�:
+
+Crear usuarios
+
+Eliminar usuarios
+
+Modificar permisos
+
+Cambiar roles
+
+Desde el m�dulo de configuraci�n del sistema.
+
+Todos los usuarios estar�n asociados a una misma cuenta principal autenticada en Firebase, compartiendo la misma base de datos y recursos.
+
+El sistema generar� autom�ticamente un usuario Administrador principal al momento del primer registro.
+
+Este usuario ser� el encargado inicial de la administraci�n del sistema.
+
+
+Reportes de Venta y reportes generales deben mostrar quien realiz� la venta, al igual que en el ticket
+
+
+
+
+
+Implementemos que cada usuario tenga su propio nip para acceder. El administrador podr� ver y modificar el nip de cada uno. Al hacer una venta el sistema mostrar� el usuario que la hizo al igual que en el ticket
+
+
+errores:.
+Dashboard: Confunde las fechas de visita de provedores. La visita est� marcada para ma�ana y el dashboard la marca como hoy.
+
+Configuraci�n: Los permisos no tienen l�gica, pues al dar permiso de acceder a una secci�n, accede a todo dentro de la misma, pero si le doy permiso por ejemplo de acceder a inventario y a agregar productos pero no a eliminar o modificar existentes aun asi lo puede hacer, por lo que es un error, este mismo sucede en todas las secciones. Acceder a configuraci�n siempre se debe de poder hacer, pero no modificar colores, eso si es un permiso aparte, arregla la l�gica de los permisos, recuerda seguir los criterios CRUD siempre y cuando el sistema permita que se lleven a cabo
+
+
+
+--------------------------------------------
+Producto y Ventas: Al registrar un producto, debe permitir marcarlo como producto a granel, en caso de que sea maarcado debe permitir poner cuantos kilos se tiene del producto y el precio por kilo. Al realizar venta y marcar dicho producto, debe permitir calcular el gramaje en base al preci dado, o dar el precio y a�adir el gramaje, ahora si agregar a la venta. 
+
+En pc al entrar a realizar venta el sistema deber� por manera predeterminada estar en la parte de clave para ahhorrar el clic en clave para ponerla, al presionar enter se agrega a la venta (Esto por que se va a integrar con un lector)
+
+Cambios generales en los permisos: el hecho de tener marcada una casilla en una dicha secci�n el sistema debe dar por entendido que va a acceder. Por lo que si es marcada una casilla tambi�n deber� permitir ver.
+
+Reportes: Los permisos en Ventas "Acceder al historial de ventas" deber�n transferirse a reportes y deber�n limitar o permitir ver las ventas y tickets. El hecho de acceder a reportes a ver el historial de ventas no implica que pueda ver reportes del dia, otra casilla a a�adir es generar reportes para limitar o permitir generarlos
+__________________________________________________
+
+
+
+
+
+
+
+--------------------------------------UUUURRRRRGGGGGGGGEEEEEENTEEEEE--------------------------------------
+
+Con base en los archvos proporcionados seguiras las siguientes instrucciones e implementaras  lo solicitado:
+
+Errores: 
+
+Ventas: Al realizar ventas a granel el sistema asume que aunque se haya vendido un gramo el costo del provedor es el 100% del costo del producto. Esto no debe ser asi pues si vendo 100 gramos a mi no me custan los 100 pesos del kilo, me costar�an el equivalente de la venta de 100 gramos (10 pesos) por lo que hay que corregir la l�gica de costos a granel. 
+
+
+Implementaciones: 
+
+Ventas: Al escanear con el lector en tel�fono (funciona y lee el c�digo) quiero que mande un enter para que se agregue a venta solo
+
+Escaner: Requiero que se agreguen funcionalidades avanzadas de la c�mara (zoom, enfoque, flash) sin cambiar dr�sticamente el estilo del escaner actual ni comprometer la l�gica del mismo.
+
+--------------------------------------UUUURRRRRGGGGGGGGEEEEEENTEEEEE--------------------------------------
+
+
+
+
+
+
+
+Integra los cambios completos en los bloques de codigo que se encuentran en los archivos proporcionados. Me daras el bloque de c�digo completo por cada objeto con los cambios solicitados mas adelante.
+
+Implementaciones: 
+L�gica de compras, listas y actualizaci�n de costos
+
+El sistema maneja listas plantilla permanentes por proveedor, que sirven como base para generar pedidos. Estas listas no se modifican al surtirse, solo cambian cuando el usuario decide actualizarlas manualmente. A partir de una plantilla se genera un pedido temporal editable, donde se pueden ajustar cantidades y precios seg�n promociones, disponibilidad o negociaci�n con el proveedor.
+
+Cuando el proveedor entrega el pedido, cada producto se confirma individualmente indicando la cantidad recibida y el costo real unitario. Al confirmar, el sistema registra la compra en el historial, suma las unidades al inventario y recalcula autom�ticamente el costo del producto usando el m�todo de promedio ponderado:
+
+Nuevo costo =
+((stock actual ?- costo promedio actual) + (cantidad recibida ?- costo nuevo))
+� nuevo stock total
+
+
+El costo ingresado en cada compra es siempre temporal y solo se guarda en el historial; no reemplaza directamente el costo del producto. El sistema mantiene como referencia el costo promedio calculado, que es el que se utiliza para reportes, valuaci�n de inventario y c�lculo de utilidades.
+
+De esta forma, el sistema conserva precios hist�ricos, permite manejar promociones temporales sin afectar datos base, mantiene listas constantes reutilizables y asegura reportes financieros realistas.
+
