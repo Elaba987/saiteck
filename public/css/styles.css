@@ -1934,3 +1934,199 @@ canvas {
     border: none;
     box-shadow: 0 0 6px rgba(102,126,234,0.6);
 }
+
+  BARRA DE META DE VENTAS — DASHBOARD
+   ======================================== */
+
+.dashboard-meta-card {
+    background: white;
+    border-radius: 15px;
+    padding: 22px 28px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.12);
+    margin-bottom: 20px;
+}
+
+.dashboard-meta-card h3 {
+    color: #2d3748;
+    margin-bottom: 16px;
+    font-size: 18px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* ========================================
+   FORMULARIO COLAPSABLE (Productos / Proveedores)
+   ======================================== */
+
+.collapsible-form-card {
+    background: white;
+    border-radius: 15px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+    margin-bottom: 20px;
+    overflow: hidden;
+}
+
+.collapsible-form-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 20px 30px;
+    cursor: pointer;
+    user-select: none;
+    transition: background 0.2s;
+    border-bottom: 3px solid transparent;
+}
+
+.collapsible-form-header:hover {
+    background: #f7fafc;
+}
+
+.collapsible-form-header.open {
+    border-bottom-color: var(--color-primario);
+}
+
+.collapsible-form-header h3 {
+    color: #2d3748;
+    font-size: 22px;
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.collapsible-toggle-icon {
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--color-primario);
+    transition: transform 0.3s ease;
+    line-height: 1;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(102, 126, 234, 0.1);
+    flex-shrink: 0;
+}
+
+.collapsible-toggle-icon.open {
+    transform: rotate(180deg);
+}
+
+.collapsible-form-body {
+    padding: 0 30px;
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.4s cubic-bezier(0.4,0,0.2,1),
+                padding 0.3s ease,
+                opacity 0.3s ease;
+    opacity: 0;
+}
+
+.collapsible-form-body.open {
+    max-height: 2000px;
+    padding: 24px 30px 30px;
+    opacity: 1;
+}
+
+/* Badge de "colapsado" — muestra un resumen mientras el form está cerrado */
+.collapsible-hint {
+    font-size: 13px;
+    color: #a0aec0;
+    margin-left: 10px;
+    font-weight: 400;
+}
+
+/* ========================================
+   BADGE PLAN EN CONFIGURACIÓN
+   ======================================== */
+
+.acceso-badge {
+    display: inline-block;
+    padding: 6px 14px;
+    border-radius: 20px;
+    font-size: 13px;
+    font-weight: 700;
+}
+
+.acceso-badge.total {
+    background: #edf7ed;
+    color: #276749;
+}
+
+.acceso-badge.basico {
+    background: #ebf4ff;
+    color: #2b6cb0;
+}
+
+/* ========================================
+   SECCIÓN META EN CONFIGURACIÓN
+   ======================================== */
+
+.meta-ventas-config {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-top: 10px;
+}
+
+.meta-ventas-config input[type="number"] {
+    width: 180px;
+    padding: 10px 14px;
+    border: 2px solid #e2e8f0;
+    border-radius: 8px;
+    font-size: 16px;
+    transition: border 0.2s;
+}
+
+.meta-ventas-config input[type="number"]:focus {
+    outline: none;
+    border-color: var(--color-primario);
+}
+
+/* ========================================
+   BOTÓN INVENTARIO EN DASHBOARD
+   ======================================== */
+
+#dashboardBotonInventario {
+    margin-bottom: 20px;
+}
+
+/* ========================================
+   RESPONSIVE COLAPSABLE
+   ======================================== */
+
+@media (max-width: 768px) {
+    .collapsible-form-header {
+        padding: 16px 20px;
+    }
+
+    .collapsible-form-header h3 {
+        font-size: 18px;
+    }
+
+    .collapsible-form-body.open {
+        padding: 16px 20px 24px;
+    }
+}
+
+@media (max-width: 480px) {
+    .collapsible-form-header {
+        padding: 14px 15px;
+    }
+
+    .collapsible-form-header h3 {
+        font-size: 16px;
+    }
+
+    .collapsible-form-body.open {
+        padding: 14px 15px 20px;
+    }
+
+    .meta-ventas-config input[type="number"] {
+        width: 100%;
+    }
+}

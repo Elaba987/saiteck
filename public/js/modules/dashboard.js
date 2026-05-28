@@ -2,15 +2,16 @@
 
 export class DashboardManager {
     constructor(productosManager, proveedoresManager, ventasManager) {
-        this.productosManager  = productosManager;
+        this.productosManager   = productosManager;
         this.proveedoresManager = proveedoresManager;
-        this.ventasManager     = ventasManager;
+        this.ventasManager      = ventasManager;
     }
 
     // ─── ESTADÍSTICAS RÁPIDAS ────────────────────────────────────────────
     obtenerEstadisticas() {
         return {
             ventasHoy:          this.calcularVentasHoy(),
+            gananciaNeta:       this.calcularGananciaNeta(),
             proveedoresHoy:     this.proveedoresManager.obtenerProveedoresHoy().length,
             productosBajoStock: this.productosManager.obtenerBajoStock(5).length
         };
@@ -22,27 +23,169 @@ export class DashboardManager {
         return ventasHoy.reduce((sum, v) => sum + v.total, 0);
     }
 
+    calcularGananciaNeta() {
+        const hoy       = new Date();
+        const ventasHoy = this.ventasManager.obtenerVentasPorFecha(hoy);
+        const ingresos  = ventasHoy.reduce((sum, v) => sum + v.total, 0);
+        const costos    = ventasHoy.reduce((sum, v) => {
+            const costoVenta = v.items.reduce((s, item) => {
+                if (item.esGranel) {
+                    const costo = (item.costoGranel != null)
+                        ? item.costoGranel
+                        : (item.producto.precioCompra || 0) * ((item.gramos || 0) / 1000);
+                    return s + costo;
+                }
+                return s + ((item.producto.precioCompra || 0) * item.cantidad);
+            }, 0);
+            return sum + costoVenta;
+        }, 0);
+        return ingresos - costos;
+    }
+
     // ─── RENDER PRINCIPAL ────────────────────────────────────────────────
     renderizar(contenedor) {
         const stats = this.obtenerEstadisticas();
+        const meta  = window.configuracionManager?.obtenerMetaVentasDiaria() || 0;
 
+        // ── Cards de estadísticas ──
         contenedor.innerHTML = `
-            <div class="stat-card" data-section="reportes">
+            <div class="stat-card" data-section="reportes" style="cursor:pointer;">
                 <h4>Ventas Hoy</h4>
                 <div class="stat-value">$${stats.ventasHoy.toFixed(2)}</div>
             </div>
-            <div class="stat-card" data-section="proveedores">
+            <div class="stat-card" style="background:linear-gradient(135deg,#48bb78 0%,#38a169 100%);">
+                <h4>Ganancia Neta Hoy</h4>
+                <div class="stat-value">$${stats.gananciaNeta.toFixed(2)}</div>
+            </div>
+            <div class="stat-card" data-section="proveedores" style="cursor:pointer;">
                 <h4>Proveedores Hoy</h4>
                 <div class="stat-value">${stats.proveedoresHoy}</div>
             </div>
-            <div class="stat-card" data-section="productos">
+            <div class="stat-card" data-section="productos" style="cursor:pointer;">
                 <h4>Bajo Stock</h4>
                 <div class="stat-value">${stats.productosBajoStock}</div>
             </div>
         `;
 
+        // ── Barra de meta de ventas ──
+        this._renderizarBarraMeta(stats.ventasHoy, meta);
+
+        // ── Botón descargar inventario ──
+        this._renderizarBotonInventario();
+
+        // ── Alertas y próximas visitas ──
         this.renderizarAlertasStock();
         this.renderizarProximasVisitas();
+    }
+
+    // ─── BARRA DE PROGRESO DE META ───────────────────────────────────────
+    _renderizarBarraMeta(ventasHoy, meta) {
+        const contenedor = document.getElementById('dashboardMetaVentas');
+        if (!contenedor) return;
+
+        if (meta <= 0) {
+            contenedor.innerHTML = `
+                <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
+                    <span style="color:#718096;font-size:14px;">
+                        💡 Sin meta diaria configurada —
+                        <a href="#" id="linkIrConfigMeta"
+                           style="color:var(--color-primario);font-weight:600;text-decoration:none;">
+                            Definir una meta
+                        </a>
+                    </span>
+                </div>`;
+
+            document.getElementById('linkIrConfigMeta')?.addEventListener('click', (e) => {
+                e.preventDefault();
+                window.appInstance?.uiManager.mostrarSeccion('configuracion');
+            });
+            return;
+        }
+
+        const porcentaje  = Math.min((ventasHoy / meta) * 100, 100);
+        const completada  = ventasHoy >= meta;
+        const falta       = Math.max(meta - ventasHoy, 0);
+
+        // Color dinámico: rojo → amarillo → verde
+        let colorBarra;
+        if (porcentaje < 40)      colorBarra = 'var(--color-peligro)';
+        else if (porcentaje < 75) colorBarra = 'var(--color-advertencia)';
+        else                       colorBarra = 'var(--color-exito)';
+
+        contenedor.innerHTML = `
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px;">
+                <div>
+                    <span style="font-weight:700;color:#2d3748;font-size:15px;">
+                        🎯 Meta diaria de ventas
+                    </span>
+                    <span style="margin-left:10px;font-size:13px;color:#718096;">
+                        Meta: <strong>$${meta.toFixed(2)}</strong>
+                    </span>
+                </div>
+                <span style="font-size:14px;font-weight:700;color:${colorBarra};">
+                    ${completada
+                        ? '✅ ¡Meta alcanzada!'
+                        : `Faltan $${falta.toFixed(2)}`}
+                </span>
+            </div>
+            <div style="background:#e2e8f0;border-radius:999px;height:18px;overflow:hidden;position:relative;">
+                <div id="barraMetaFill" style="
+                    width: ${porcentaje}%;
+                    height: 100%;
+                    background: ${completada
+                        ? 'linear-gradient(90deg,#48bb78,#38a169)'
+                        : `linear-gradient(90deg,${colorBarra},${colorBarra}cc)`};
+                    border-radius: 999px;
+                    transition: width 0.8s cubic-bezier(0.4,0,0.2,1);
+                    position: relative;
+                ">
+                    ${porcentaje >= 15 ? `
+                    <span style="
+                        position:absolute;right:10px;top:50%;transform:translateY(-50%);
+                        font-size:11px;font-weight:700;color:white;white-space:nowrap;
+                    ">${porcentaje.toFixed(1)}%</span>` : ''}
+                </div>
+                ${porcentaje < 15 ? `
+                <span style="
+                    position:absolute;left:8px;top:50%;transform:translateY(-50%);
+                    font-size:11px;font-weight:700;color:#4a5568;
+                ">${porcentaje.toFixed(1)}%</span>` : ''}
+            </div>
+            <div style="display:flex;justify-content:space-between;margin-top:6px;font-size:12px;color:#718096;">
+                <span>$0</span>
+                <span>$${(meta / 2).toFixed(0)}</span>
+                <span>$${meta.toFixed(2)}</span>
+            </div>
+        `;
+
+        // Animación: iniciar desde 0 y expandir
+        requestAnimationFrame(() => {
+            const fill = document.getElementById('barraMetaFill');
+            if (fill) {
+                fill.style.width = '0%';
+                requestAnimationFrame(() => {
+                    fill.style.width = `${porcentaje}%`;
+                });
+            }
+        });
+    }
+
+    // ─── BOTÓN DESCARGAR INVENTARIO ──────────────────────────────────────
+    _renderizarBotonInventario() {
+        const contenedor = document.getElementById('dashboardBotonInventario');
+        if (!contenedor) return;
+
+        contenedor.innerHTML = `
+            <button id="btnDashboardDescargaInventario" class="btn btn-success"
+                style="display:inline-flex;align-items:center;gap:8px;">
+                📥 Descargar Inventario Completo
+            </button>
+        `;
+
+        document.getElementById('btnDashboardDescargaInventario')
+            ?.addEventListener('click', () => {
+                this.productosManager.descargarArchivoAlmacen();
+            });
     }
 
     // ─── ALERTAS DE STOCK BAJO ───────────────────────────────────────────
@@ -52,8 +195,8 @@ export class DashboardManager {
 
         const todos    = this.productosManager.obtenerTodos();
         const bajStock = todos.filter(p => {
-            if (p.esGranel) return parseFloat(p.stock) < 1;   // menos de 1 kg
-            return parseInt(p.stock) < 5;                       // menos de 5 unidades
+            if (p.esGranel) return parseFloat(p.stock) < 1;
+            return parseInt(p.stock) < 5;
         }).sort((a, b) => parseFloat(a.stock) - parseFloat(b.stock));
 
         if (bajStock.length === 0) {
@@ -98,12 +241,11 @@ export class DashboardManager {
         const contenedor = document.getElementById('proximasVisitas');
         if (!contenedor) return;
 
-        const hoy    = new Date();
+        const hoy = new Date();
         hoy.setHours(0, 0, 0, 0);
 
-        const todos  = this.proveedoresManager.obtenerTodos();
+        const todos = this.proveedoresManager.obtenerTodos();
 
-        // Filtrar los que NO tienen visita ya realizada y tienen fecha
         const proximos = todos
             .filter(p => p.fechaVisita && !p.visitaRealizada)
             .map(p => {
@@ -114,9 +256,9 @@ export class DashboardManager {
                 const diffDias = Math.round(diffMs / (1000 * 60 * 60 * 24));
                 return { ...p, fechaObj: fecha, diffDias };
             })
-            .filter(p => p.diffDias >= 0)           // no mostrar fechas pasadas
-            .sort((a, b) => a.diffDias - b.diffDias) // más próximas primero
-            .slice(0, 10);                           // top 10
+            .filter(p => p.diffDias >= 0)
+            .sort((a, b) => a.diffDias - b.diffDias)
+            .slice(0, 10);
 
         if (proximos.length === 0) {
             contenedor.innerHTML = `
@@ -127,13 +269,13 @@ export class DashboardManager {
             return;
         }
 
-        const nombresDias = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
+        const nombresDias  = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
         const nombresMeses = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
 
         contenedor.innerHTML = proximos.map(p => {
-            const esHoy     = p.diffDias === 0;
-            const esManana  = p.diffDias === 1;
-            const estasSem  = p.diffDias > 1 && p.diffDias <= 6;
+            const esHoy    = p.diffDias === 0;
+            const esManana = p.diffDias === 1;
+            const estasSem = p.diffDias > 1 && p.diffDias <= 6;
 
             let labelDias, colorBg, colorBorde;
             if (esHoy) {

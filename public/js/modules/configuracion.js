@@ -10,7 +10,10 @@ export class ConfiguracionManager {
             peligro: '#f56565',
             advertencia: '#ed8936'
         };
-        
+
+        // Meta de ventas diaria en memoria (se carga desde Firestore)
+        this.metaVentasDiaria = 0;
+
         // Hacer instancia global
         window.configuracionManager = this;
     }
@@ -52,7 +55,7 @@ export class ConfiguracionManager {
         root.style.setProperty('--color-exito', colores.exito);
         root.style.setProperty('--color-peligro', colores.peligro);
         root.style.setProperty('--color-advertencia', colores.advertencia);
-        
+
         // Actualizar el gradiente del body
         document.body.style.background = `linear-gradient(135deg, ${colores.primario} 0%, ${colores.secundario} 100%)`;
     }
@@ -133,6 +136,67 @@ export class ConfiguracionManager {
         }
     }
 
+    // =============================================
+    // META DE VENTAS DIARIA
+    // =============================================
+
+    /**
+     * Carga la meta de ventas diaria desde Firestore.
+     * El documento vive en: users/{uid}/configuracion/metas
+     */
+    async cargarMetaVentasDiaria() {
+        if (!window.currentUser) return 0;
+        try {
+            const doc = await window.db
+                .collection('users')
+                .doc(window.currentUser.uid)
+                .collection('configuracion')
+                .doc('metas')
+                .get();
+
+            this.metaVentasDiaria = doc.exists ? (doc.data().metaDiaria || 0) : 0;
+        } catch (error) {
+            console.error('Error al cargar meta de ventas:', error);
+            this.metaVentasDiaria = 0;
+        }
+        return this.metaVentasDiaria;
+    }
+
+    /**
+     * Guarda la meta de ventas diaria en Firestore.
+     */
+    async guardarMetaVentasDiaria(meta) {
+        if (!window.currentUser) return false;
+        const valor = parseFloat(meta) || 0;
+        if (valor < 0) return false;
+
+        try {
+            await window.db
+                .collection('users')
+                .doc(window.currentUser.uid)
+                .collection('configuracion')
+                .doc('metas')
+                .set({
+                    metaDiaria: valor,
+                    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                }, { merge: true });
+
+            this.metaVentasDiaria = valor;
+            return true;
+        } catch (error) {
+            console.error('Error al guardar meta de ventas:', error);
+            return false;
+        }
+    }
+
+    obtenerMetaVentasDiaria() {
+        return this.metaVentasDiaria;
+    }
+
+    // =============================================
+    // INICIALIZACIÓN DE LA UI DE CONFIGURACIÓN
+    // =============================================
+
     inicializar() {
         // Event listeners para cambio de colores en tiempo real
         const colorInputs = ['colorPrimario', 'colorSecundario', 'colorSidebar', 'colorExito', 'colorPeligro', 'colorAdvertencia'];
@@ -149,12 +213,11 @@ export class ConfiguracionManager {
         const btnAplicar = document.getElementById('btnAplicarColores');
         if (btnAplicar) {
             btnAplicar.addEventListener('click', async () => {
-                // Validar permiso
                 if (window.appInstance && !window.appInstance.usuariosManager.tienePermiso('configuracion_colores')) {
                     alert('No tienes permiso para modificar colores');
                     return;
                 }
-                
+
                 const colores = {
                     primario: document.getElementById('colorPrimario').value,
                     secundario: document.getElementById('colorSecundario').value,
@@ -163,17 +226,17 @@ export class ConfiguracionManager {
                     peligro: document.getElementById('colorPeligro').value,
                     advertencia: document.getElementById('colorAdvertencia').value
                 };
-                
+
                 btnAplicar.disabled = true;
                 btnAplicar.textContent = 'Guardando...';
-                
+
                 const success = await this.guardarColoresEnFirestore(colores);
-                
+
                 btnAplicar.disabled = false;
                 btnAplicar.textContent = 'Aplicar Colores';
-                
+
                 if (success) {
-                    alert('Colores aplicados y guardados correctamente.\nSe sincronizaran en todos tus dispositivos.');
+                    alert('Colores aplicados y guardados correctamente.\nSe sincronizarán en todos tus dispositivos.');
                 }
             });
         }
@@ -182,15 +245,15 @@ export class ConfiguracionManager {
         const btnReset = document.getElementById('btnResetColores');
         if (btnReset) {
             btnReset.addEventListener('click', async () => {
-                if (confirm('Restablecer los colores predeterminados?')) {
+                if (confirm('¿Restablecer los colores predeterminados?')) {
                     btnReset.disabled = true;
                     btnReset.textContent = 'Restableciendo...';
-                    
+
                     const success = await this.restablecerColores();
-                    
+
                     btnReset.disabled = false;
                     btnReset.textContent = 'Restablecer Predeterminados';
-                    
+
                     if (success) {
                         alert('Colores restablecidos correctamente');
                     }
@@ -202,13 +265,40 @@ export class ConfiguracionManager {
         const btnConfigLogout = document.getElementById('btnConfigLogout');
         if (btnConfigLogout) {
             btnConfigLogout.addEventListener('click', async () => {
-                if (confirm('Cerrar sesion?')) {
+                if (confirm('¿Cerrar sesión?')) {
                     try {
                         await window.auth.signOut();
                     } catch (error) {
                         console.error('Error al cerrar sesion:', error);
                         alert('Error al cerrar sesion');
                     }
+                }
+            });
+        }
+
+        // ── Meta de ventas diaria ──
+        const btnGuardarMeta = document.getElementById('btnGuardarMetaVentas');
+        if (btnGuardarMeta) {
+            btnGuardarMeta.addEventListener('click', async () => {
+                const inputMeta = document.getElementById('inputMetaVentas');
+                const valor = parseFloat(inputMeta?.value) || 0;
+
+                btnGuardarMeta.disabled = true;
+                btnGuardarMeta.textContent = 'Guardando...';
+
+                const ok = await this.guardarMetaVentasDiaria(valor);
+
+                btnGuardarMeta.disabled = false;
+                btnGuardarMeta.textContent = 'Guardar Meta';
+
+                if (ok) {
+                    alert(`Meta diaria de $${valor.toFixed(2)} guardada correctamente.`);
+                    // Refrescar dashboard si está visible
+                    if (window.appInstance) {
+                        window.appInstance.actualizarDashboard();
+                    }
+                } else {
+                    alert('Error al guardar la meta.');
                 }
             });
         }
@@ -229,6 +319,16 @@ export class ConfiguracionManager {
             if (configEmail) {
                 configEmail.textContent = window.currentUser.email;
             }
+        }
+    }
+
+    /**
+     * Rellena el campo de meta al abrir la sección de configuración.
+     */
+    actualizarInputMeta() {
+        const input = document.getElementById('inputMetaVentas');
+        if (input) {
+            input.value = this.metaVentasDiaria > 0 ? this.metaVentasDiaria : '';
         }
     }
 }

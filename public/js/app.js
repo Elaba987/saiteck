@@ -39,10 +39,42 @@ class TiendaApp {
         this.inicializarGestionUsuarios();
         this.inicializarModalNIP();
         this.inicializarEscaner();
+        this.inicializarFormulariosColapsables();
 
         setTimeout(() => {
             this.configuracionManager.inicializar();
         }, 500);
+    }
+
+    // ============================================================
+    // FORMULARIOS COLAPSABLES (Registrar Producto / Proveedor)
+    // ============================================================
+    inicializarFormulariosColapsables() {
+        // Producto
+        this._bindCollapsible('headerRegistrarProducto', 'bodyRegistrarProducto');
+        // Proveedor
+        this._bindCollapsible('headerRegistrarProveedor', 'bodyRegistrarProveedor');
+    }
+
+    _bindCollapsible(headerId, bodyId) {
+        const header = document.getElementById(headerId);
+        const body   = document.getElementById(bodyId);
+        if (!header || !body) return;
+
+        const icon = header.querySelector('.collapsible-toggle-icon');
+
+        header.addEventListener('click', () => {
+            const isOpen = body.classList.contains('open');
+            if (isOpen) {
+                body.classList.remove('open');
+                header.classList.remove('open');
+                if (icon) icon.classList.remove('open');
+            } else {
+                body.classList.add('open');
+                header.classList.add('open');
+                if (icon) icon.classList.add('open');
+            }
+        });
     }
 
     // ============================================================
@@ -83,7 +115,10 @@ class TiendaApp {
             await this.usuariosManager.inicializar();
 
             if (window.configuracionManager) {
-                await window.configuracionManager.cargarColoresDesdeFirestore();
+                await Promise.all([
+                    window.configuracionManager.cargarColoresDesdeFirestore(),
+                    window.configuracionManager.cargarMetaVentasDiaria()
+                ]);
             }
 
             await Promise.all([
@@ -139,7 +174,6 @@ class TiendaApp {
     // ESCÁNER DE CÓDIGO DE BARRAS
     // ============================================================
     inicializarEscaner() {
-        // Botón en Ventas
         const btnVenta = document.getElementById('btnEscanerVenta');
         if (btnVenta) {
             btnVenta.addEventListener('click', () => {
@@ -157,7 +191,6 @@ class TiendaApp {
             });
         }
 
-        // Botón en Productos
         const btnProducto = document.getElementById('btnEscanerProducto');
         if (btnProducto) {
             btnProducto.addEventListener('click', () => {
@@ -225,7 +258,6 @@ class TiendaApp {
                 }
             };
 
-            // Clonar teclas para limpiar listeners anteriores
             modal.querySelectorAll('.nip-key').forEach(tecla => {
                 const nuevo = tecla.cloneNode(true);
                 tecla.parentNode.replaceChild(nuevo, tecla);
@@ -441,7 +473,7 @@ class TiendaApp {
     }
 
     _toggleCamposEditarGranel() {
-        const esGranel      = document.getElementById('editEsGranel').checked;
+        const esGranel       = document.getElementById('editEsGranel').checked;
         const labelEditStock  = document.getElementById('labelEditStock');
         const labelEditPrecioV = document.getElementById('labelEditPrecioVenta');
         if (esGranel) {
@@ -473,6 +505,13 @@ class TiendaApp {
             this.uiManager.limpiarFormulario(document.getElementById('formProducto'));
             if (document.getElementById('esGranel')) document.getElementById('esGranel').checked = false;
             this._toggleCamposGranel();
+            // Colapsar el formulario tras registrar
+            const body = document.getElementById('bodyRegistrarProducto');
+            const header = document.getElementById('headerRegistrarProducto');
+            const icon = header?.querySelector('.collapsible-toggle-icon');
+            body?.classList.remove('open');
+            header?.classList.remove('open');
+            icon?.classList.remove('open');
         } else {
             this.uiManager.mostrarMensaje('mensajeProductos', `⚠️ ${resultado.message}`, 'error');
         }
@@ -601,9 +640,7 @@ class TiendaApp {
     }
 
     actualizarSelectVentas() {
-        const select    = document.getElementById('selectProductoVenta');
-        // _productosEnSelect rastrea qué array se usó para poblar el select
-        // (puede ser la lista completa o una lista filtrada por búsqueda)
+        const select = document.getElementById('selectProductoVenta');
         this._productosEnSelect = this.productosManager.obtenerTodos();
         this.uiManager.actualizarSelectProductos(this._productosEnSelect, select);
     }
@@ -633,7 +670,6 @@ class TiendaApp {
         const termino = document.getElementById('buscarNombreVenta').value;
         if (!termino) { this.actualizarSelectVentas(); return; }
         const productos = this.productosManager.buscar(termino);
-        // Guardar el array filtrado para que seleccionarProductoPorNombre use el índice correcto
         this._productosEnSelect = productos;
         if (productos.length === 1) {
             this.productoSeleccionado = productos[0];
@@ -645,7 +681,6 @@ class TiendaApp {
     seleccionarProductoPorNombre() {
         const select = document.getElementById('selectProductoVenta');
         const idx    = select.value;
-        // ui.js guarda el índice del array (no la clave) como value del option
         if (idx === '' || idx === null || idx === undefined) {
             this.productoSeleccionado = null;
             document.getElementById('infoProductoVenta').innerHTML = '';
@@ -663,7 +698,7 @@ class TiendaApp {
     }
 
     mostrarInfoProductoVenta() {
-        const producto  = this.productoSeleccionado;
+        const producto   = this.productoSeleccionado;
         const contenedor = document.getElementById('infoProductoVenta');
         if (!producto || !contenedor) return;
 
@@ -744,7 +779,6 @@ class TiendaApp {
             this.ventasManager.agregarItemVenta(this.productoSeleccionado, cantidad);
         }
 
-        // Limpiar campos
         document.getElementById('cantidadVenta').value         = '';
         document.getElementById('buscarClaveVenta').value      = '';
         document.getElementById('buscarNombreVenta').value     = '';
@@ -758,8 +792,8 @@ class TiendaApp {
     }
 
     actualizarVistaVentaActual() {
-        const items        = this.ventasManager.obtenerVentaActual();
-        const contenedor   = document.getElementById('listaVenta');
+        const items         = this.ventasManager.obtenerVentaActual();
+        const contenedor    = document.getElementById('listaVenta');
         const totalElemento = document.getElementById('totalVenta');
         this.uiManager.renderizarListaVenta(items, contenedor);
         this.uiManager.actualizarTotalVenta(this.ventasManager.calcularTotal(), totalElemento);
@@ -935,7 +969,7 @@ class TiendaApp {
         if (tipoReparto === 'manual') {
             proveedor.fechaVisita = document.getElementById('fechaVisita').value;
             if (!proveedor.fechaVisita) { this.uiManager.alerta('Seleccione una fecha de visita'); return; }
-            proveedor.diasReparto      = [];
+            proveedor.diasReparto       = [];
             proveedor.frecuenciaReparto = 1;
         } else {
             const checkboxes = document.querySelectorAll('input[name="diasReparto"]:checked');
@@ -950,9 +984,15 @@ class TiendaApp {
             this.uiManager.alerta(resultado.message);
             document.getElementById('formProveedor').reset();
             document.querySelectorAll('input[name="diasReparto"]').forEach(cb => cb.checked = false);
-            // Restaurar estado visual: mostrar fecha, ocultar días
             document.getElementById('grupoFechaManual')?.classList.remove('hidden');
             document.getElementById('grupoDiasConstantes')?.classList.add('hidden');
+            // Colapsar el formulario tras registrar
+            const body   = document.getElementById('bodyRegistrarProveedor');
+            const header = document.getElementById('headerRegistrarProveedor');
+            const icon   = header?.querySelector('.collapsible-toggle-icon');
+            body?.classList.remove('open');
+            header?.classList.remove('open');
+            icon?.classList.remove('open');
         } else {
             this.uiManager.alerta(resultado.message);
         }
@@ -1189,8 +1229,8 @@ class TiendaApp {
     }
 
     mostrarRankingProductos(reporte) {
-        const orden     = document.getElementById('ordenRankingProductos')?.value || 'mayor';
-        const productos = this.reportesManager.ordenarProductosPorVentas(reporte.ventas, orden);
+        const orden      = document.getElementById('ordenRankingProductos')?.value || 'mayor';
+        const productos  = this.reportesManager.ordenarProductosPorVentas(reporte.ventas, orden);
         const contenedor = document.getElementById('tablaRankingProductos');
         this.uiManager.renderizarRankingProductos(productos, contenedor);
     }
@@ -1217,7 +1257,6 @@ class TiendaApp {
         if (configProfileRole) configProfileRole.textContent =
             usuario.rol === 'administrador' ? '👑 Administrador' : '👤 Empleado';
 
-        // Badge del plan de suscripción de la cuenta
         if (configPlanBadge) {
             const esPlanTotal = this.usuariosManager.cuentaTieneAccesoTotal();
             const limite      = this.usuariosManager.obtenerLimiteUsuarios();
@@ -1243,13 +1282,15 @@ class TiendaApp {
             }
         }
 
-        // Mostrar/ocultar sección de gestión de usuarios
+        // Rellenar input de meta en configuración
+        this.configuracionManager.actualizarInputMeta();
+
         const seccionGestion = document.getElementById('seccionGestionUsuarios');
         if (seccionGestion) {
             if (this.usuariosManager.esAdministrador()) {
-                const limite  = this.usuariosManager.obtenerLimiteUsuarios();
+                const limite   = this.usuariosManager.obtenerLimiteUsuarios();
                 const actuales = this.usuariosManager.contarUsuariosSecundarios();
-                const descEl  = seccionGestion.querySelector('.desc-limite-usuarios');
+                const descEl   = seccionGestion.querySelector('.desc-limite-usuarios');
                 if (descEl) descEl.textContent = `Puedes crear hasta ${limite} usuarios (${actuales}/${limite} usados).`;
                 seccionGestion.classList.remove('hidden');
                 this.cargarListaUsuarios();
@@ -1304,7 +1345,6 @@ class TiendaApp {
     // ============================================================
     // MODAL CREAR / EDITAR USUARIO
     // ============================================================
-
     cerrarModalUsuario() {
         this.cerrarModal('modalUsuario');
     }
@@ -1317,11 +1357,10 @@ class TiendaApp {
         form.reset();
         document.getElementById('usuarioId').value = '';
 
-        const displayNIP    = document.getElementById('displayNIP');
-        let inputNIP        = document.getElementById('inputNIP');
-        let nipVisible      = false;
+        const displayNIP = document.getElementById('displayNIP');
+        let inputNIP     = document.getElementById('inputNIP');
+        let nipVisible   = false;
 
-        // Clonar los 3 botones interactivos del NIP para limpiar listeners acumulados
         const toggleNIP     = document.getElementById('toggleNIP');
         const btnGenerarNIP = document.getElementById('btnGenerarNIP');
 
@@ -1329,12 +1368,10 @@ class TiendaApp {
         toggleNIP.parentNode.replaceChild(newToggle, toggleNIP);
         const newGenerar = btnGenerarNIP.cloneNode(true);
         btnGenerarNIP.parentNode.replaceChild(newGenerar, btnGenerarNIP);
-        // Clonar inputNIP para limpiar listeners de 'input' acumulados
         const newInputNIP = inputNIP.cloneNode(true);
         inputNIP.parentNode.replaceChild(newInputNIP, inputNIP);
-        inputNIP = newInputNIP; // actualizar referencia local
+        inputNIP = newInputNIP;
 
-        // Cargar checkboxes de permisos respetando techo de cuenta
         this.cargarPermisosEnModal();
 
         if (usuarioId) {
@@ -1350,7 +1387,6 @@ class TiendaApp {
             displayNIP.textContent = '••••';
             displayNIP.classList.add('hidden-nip');
 
-            // Marcar permisos guardados
             if (usuario.rol === 'empleado' && usuario.permisos) {
                 usuario.permisos.forEach(permiso => {
                     const cb = document.querySelector(`input[name="permisos"][value="${permiso}"]`);
@@ -1366,7 +1402,6 @@ class TiendaApp {
             nipVisible = true;
         }
 
-        // Listeners del NIP (sobre los nodos frescos)
         document.getElementById('toggleNIP').addEventListener('click', () => {
             nipVisible = !nipVisible;
             const btn = document.getElementById('toggleNIP');
@@ -1396,40 +1431,25 @@ class TiendaApp {
         modal.style.display = 'flex';
     }
 
-    /**
-     * Habilita/deshabilita la opción "Acceso Total" según el plan de la cuenta.
-     * Si la cuenta es básica, el admin no puede asignar acceso total a sus empleados.
-     */
     _configurarOpcionesAcceso() {
-        const cuentaEsTotal    = this.usuariosManager.cuentaTieneAccesoTotal();
-        const radioTotal       = document.getElementById('accesoTotal');
-        const opcionTotal      = document.getElementById('opcionTotal');
-        const avisoPlanBasico  = document.getElementById('avisoPlanBasico');
-        const bloqueadoTexto   = document.getElementById('totalBloqueadoTexto');
+        const cuentaEsTotal   = this.usuariosManager.cuentaTieneAccesoTotal();
+        const radioTotal      = document.getElementById('accesoTotal');
+        const opcionTotal     = document.getElementById('opcionTotal');
+        const avisoPlanBasico = document.getElementById('avisoPlanBasico');
+        const bloqueadoTexto  = document.getElementById('totalBloqueadoTexto');
 
-        if (radioTotal) radioTotal.disabled = !cuentaEsTotal;
-
-        if (opcionTotal) {
-            opcionTotal.style.opacity    = cuentaEsTotal ? '1' : '0.5';
-            opcionTotal.style.cursor     = cuentaEsTotal ? 'pointer' : 'not-allowed';
-        }
-
-        if (avisoPlanBasico)  avisoPlanBasico.style.display  = cuentaEsTotal ? 'none' : 'block';
-        if (bloqueadoTexto)   bloqueadoTexto.style.display   = cuentaEsTotal ? 'none' : 'inline';
+        if (radioTotal)      radioTotal.disabled          = !cuentaEsTotal;
+        if (opcionTotal)     opcionTotal.style.opacity    = cuentaEsTotal ? '1' : '0.5';
+        if (opcionTotal)     opcionTotal.style.cursor     = cuentaEsTotal ? 'pointer' : 'not-allowed';
+        if (avisoPlanBasico) avisoPlanBasico.style.display = cuentaEsTotal ? 'none' : 'block';
+        if (bloqueadoTexto)  bloqueadoTexto.style.display  = cuentaEsTotal ? 'none' : 'inline';
     }
 
-    /**
-     * Restaura los checkboxes de permisos granulares.
-     * Si la cuenta es básica, los permisos de proveedores y reportes
-     * se muestran deshabilitados con un tooltip explicativo.
-     */
     cargarPermisosEnModal() {
         const contenedor        = document.getElementById('listadoPermisos');
         if (!contenedor) return;
         const permisosAgrupados = this.usuariosManager.obtenerPermisosAgrupados();
         const cuentaEsTotal     = this.usuariosManager.cuentaTieneAccesoTotal();
-
-        // Grupos bloqueados en plan Basic
         const gruposBloqueados  = cuentaEsTotal ? [] : ['Proveedores', 'Reportes'];
 
         let html = '';
@@ -1462,18 +1482,13 @@ class TiendaApp {
         }
     }
 
-    /**
-     * Lee los checkboxes de permisos y guarda el usuario.
-     * Respeta el techo de suscripción: aunque se marquen proveedores/reportes,
-     * usuarios.js los filtrará si la cuenta es básica.
-     */
     async guardarUsuario() {
-        const usuarioId  = document.getElementById('usuarioId').value;
-        const nombre     = document.getElementById('nombreUsuario').value.trim();
-        const rol        = document.getElementById('rolUsuario').value;
-        const nip        = document.getElementById('inputNIP').value;
+        const usuarioId = document.getElementById('usuarioId').value;
+        const nombre    = document.getElementById('nombreUsuario').value.trim();
+        const rol       = document.getElementById('rolUsuario').value;
+        const nip       = document.getElementById('inputNIP').value;
 
-        if (!nombre)              { this.uiManager.alerta('Ingrese un nombre para el usuario'); return; }
+        if (!nombre)               { this.uiManager.alerta('Ingrese un nombre para el usuario'); return; }
         if (!/^\d{4}$/.test(nip)) { this.uiManager.alerta('El NIP debe tener exactamente 4 dígitos'); return; }
 
         let permisos = [];
@@ -1486,7 +1501,7 @@ class TiendaApp {
             }
         }
 
-        const datos    = { nombre, rol, permisos, nip };
+        const datos     = { nombre, rol, permisos, nip };
         const resultado = usuarioId
             ? await this.usuariosManager.actualizarUsuario(usuarioId, datos)
             : await this.usuariosManager.crearUsuario(datos);
@@ -1516,15 +1531,14 @@ class TiendaApp {
             return;
         }
 
-        const permisosMap       = this.usuariosManager.obtenerPermisos();
-        const cuentaEsTotal     = this.usuariosManager.cuentaTieneAccesoTotal();
+        const permisosMap   = this.usuariosManager.obtenerPermisos();
+        const cuentaEsTotal = this.usuariosManager.cuentaTieneAccesoTotal();
 
         contenedor.innerHTML = usuariosSecundarios.map(usuario => {
-            const esAdmin   = usuario.rol === 'administrador';
-            const rolTexto  = esAdmin ? '👑 Administrador' : '👤 Empleado';
-            const rolClase  = esAdmin ? 'administrador' : 'empleado';
+            const esAdmin  = usuario.rol === 'administrador';
+            const rolTexto = esAdmin ? '👑 Administrador' : '👤 Empleado';
+            const rolClase = esAdmin ? 'administrador' : 'empleado';
 
-            // Lista de permisos efectivos (ya con techo de cuenta aplicado)
             const efectivos = this.usuariosManager._resolverPermisosEfectivos(usuario);
 
             let permisosHtml = '';
@@ -1546,8 +1560,8 @@ class TiendaApp {
                             <span class="user-card-role ${rolClase}">${rolTexto}</span>
                         </div>
                         <div class="user-card-actions">
-                            <button class="btn btn-primary btn-sm" data-accion="editar-usuario" data-id="${usuario.id}">✏️ Editar</button>
-                            <button class="btn btn-danger btn-sm"  data-accion="eliminar-usuario" data-id="${usuario.id}">🗑️ Eliminar</button>
+                            <button class="btn btn-primary btn-sm" data-accion="editar-usuario"   data-id="${usuario.id}">✏️ Editar</button>
+                            <button class="btn btn-danger  btn-sm" data-accion="eliminar-usuario" data-id="${usuario.id}">🗑️ Eliminar</button>
                         </div>
                     </div>
                     <div style="margin-top:10px;flex-wrap:wrap;gap:4px;">${permisosHtml}</div>

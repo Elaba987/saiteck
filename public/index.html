@@ -11,6 +11,7 @@
     <link rel="icon" type="image/png" href="img/logo_saiteck.png">
     <link rel="apple-touch-icon" href="img/logo_saiteck.png">
     <link rel="stylesheet" href="css/styles.css">
+    <link rel="stylesheet" href="css/styles_additions.css">
 </head>
 <body>
 
@@ -51,14 +52,13 @@
     <div id="profileContainer" class="profile-container hidden">
         <div class="profile-selection-card">
             <div class="profile-header">
-                <img src="img/logo_saiteck.png" alt="SaiTeck" class="profile-logo" style="height:250px;object-fit:contain;display:block;margin:0 auto;">
+                <img src="img/logo_saiteck.png" alt="SaiTeck" class="profile-logo"
+                     style="height:250px;object-fit:contain;display:block;margin:0 auto;">
                 <h2>SaiTeck</h2>
                 <p class="subtitle">Selecciona tu perfil para continuar</p>
             </div>
 
-            <div id="profilesList" class="profiles-grid">
-                <!-- Los perfiles se cargarán dinámicamente -->
-            </div>
+            <div id="profilesList" class="profiles-grid"></div>
 
             <div class="profile-footer">
                 <p class="profile-footer-text">
@@ -82,7 +82,8 @@
         <!-- SIDEBAR -->
         <aside class="sidebar" id="sidebar">
             <div class="sidebar-header">
-                <img src="img/logo_saiteck.png" alt="SaiTeck" style="width:100%;max-width:260px;object-fit:contain;display:block;margin:0 auto 8px;">
+                <img src="img/logo_saiteck.png" alt="SaiTeck"
+                     style="width:100%;max-width:260px;object-fit:contain;display:block;margin:0 auto 8px;">
                 <p class="subtitle-sidebar">Sistema de Administración de Inventarios y Venta</p>
             </div>
             <nav class="menu" id="mainMenu"></nav>
@@ -106,15 +107,32 @@
 
             <!-- ─── DASHBOARD ─── -->
             <section id="dashboard" class="section">
+
+                <!-- Cards de estadísticas -->
                 <div class="card">
                     <h3>📊 Panel de Control</h3>
                     <div id="statsGrid" class="stats-grid"></div>
                 </div>
-                <div class="card" style="margin-top: 20px;">
+
+                <!-- Barra de meta de ventas -->
+                <div class="dashboard-meta-card">
+                    <h3 style="color:#2d3748;margin-bottom:16px;font-size:18px;border-bottom:3px solid var(--color-primario);padding-bottom:10px;">
+                        🎯 Progreso de Meta Diaria
+                    </h3>
+                    <div id="dashboardMetaVentas"></div>
+                </div>
+
+                <!-- Botón descargar inventario -->
+                <div id="dashboardBotonInventario"></div>
+
+                <!-- Alertas de stock -->
+                <div class="card">
                     <h3>⚠️ Alertas de Stock Bajo</h3>
                     <div id="alertasStock"></div>
                 </div>
-                <div class="card" style="margin-top: 20px;">
+
+                <!-- Próximas visitas -->
+                <div class="card">
                     <h3>🚚 Próximas Visitas de Proveedores</h3>
                     <div id="proximasVisitas"></div>
                 </div>
@@ -122,55 +140,76 @@
 
             <!-- ─── PRODUCTOS ─── -->
             <section id="productos" class="section hidden">
-                <div class="card" id="cardAgregarProducto">
-                    <h3>Registrar Producto</h3>
-                    <form id="formProducto">
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label>Clave</label>
-                                <div class="input-scan-group">
-                                    <input type="number" id="clave" required placeholder="Código del producto">
-                                    <button type="button" class="btn-scan btn-scan-primary" id="btnEscanerProducto" title="Escanear código de barras">📷</button>
+
+                <!-- Formulario colapsable: Registrar Producto -->
+                <div class="collapsible-form-card">
+                    <div class="collapsible-form-header" id="headerRegistrarProducto">
+                        <h3>📦 Registrar Producto
+                            <span class="collapsible-hint">— toca para expandir</span>
+                        </h3>
+                        <span class="collapsible-toggle-icon">▼</span>
+                    </div>
+                    <div class="collapsible-form-body" id="bodyRegistrarProducto">
+                        <form id="formProducto">
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label>Clave</label>
+                                    <div class="input-scan-group">
+                                        <input type="number" id="clave" required placeholder="Código del producto">
+                                        <button type="button" class="btn-scan btn-scan-primary"
+                                                id="btnEscanerProducto" title="Escanear código de barras">📷</button>
+                                    </div>
+                                </div>
+                                <div class="form-group">
+                                    <label>Nombre</label>
+                                    <input type="text" id="nombre" required placeholder="Nombre del producto">
                                 </div>
                             </div>
-                            <div class="form-group">
-                                <label>Nombre</label>
-                                <input type="text" id="nombre" required placeholder="Nombre del producto">
-                            </div>
-                        </div>
 
-                        <!-- Checkbox granel -->
-                        <div class="form-group" style="display:flex;align-items:center;gap:10px;margin-bottom:15px;">
-                            <input type="checkbox" id="esGranel" style="width:20px;height:20px;accent-color:var(--color-primario);cursor:pointer;">
-                            <label for="esGranel" style="margin:0;cursor:pointer;font-weight:600;color:var(--color-primario);">
-                                ⚖️ Producto a Granel (venta por peso/kg)
-                            </label>
-                        </div>
+                            <!-- Checkbox granel -->
+                            <div class="form-group" style="display:flex;align-items:center;gap:10px;margin-bottom:15px;">
+                                <input type="checkbox" id="esGranel"
+                                       style="width:20px;height:20px;accent-color:var(--color-primario);cursor:pointer;">
+                                <label for="esGranel"
+                                       style="margin:0;cursor:pointer;font-weight:600;color:var(--color-primario);">
+                                    ⚖️ Producto a Granel (venta por peso/kg)
+                                </label>
+                            </div>
 
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label>Precio de Compra (Proveedor)</label>
-                                <input type="number" step="0.01" id="precioCompra" required>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label>Precio de Compra (Proveedor)</label>
+                                    <input type="number" step="0.01" id="precioCompra" required>
+                                </div>
+                                <div class="form-group" id="grupoPrecioVenta">
+                                    <label id="labelPrecioVenta">Precio de Venta</label>
+                                    <input type="number" step="0.01" id="precioVenta" required>
+                                    <small id="grupoPrecioVentaKilo" class="hidden"
+                                           style="color:var(--color-primario);font-weight:600;margin-top:4px;display:block;">
+                                        💡 Precio por kilogramo
+                                    </small>
+                                </div>
                             </div>
-                            <div class="form-group" id="grupoPrecioVenta">
-                                <label id="labelPrecioVenta">Precio de Venta</label>
-                                <input type="number" step="0.01" id="precioVenta" required>
-                                <small id="grupoPrecioVentaKilo" class="hidden" style="color:var(--color-primario);font-weight:600;margin-top:4px;display:block;">💡 Precio por kilogramo</small>
+                            <div class="form-group" id="grupoStock">
+                                <label id="labelStock">Stock</label>
+                                <input type="number" step="0.001" id="stock" required>
+                                <small id="grupoKilos" class="hidden"
+                                       style="color:var(--color-primario);font-weight:600;margin-top:4px;display:block;">
+                                    📦 Cantidad en kilogramos disponibles
+                                </small>
                             </div>
-                        </div>
-                        <div class="form-group" id="grupoStock">
-                            <label id="labelStock">Stock</label>
-                            <input type="number" step="0.001" id="stock" required>
-                            <small id="grupoKilos" class="hidden" style="color:var(--color-primario);font-weight:600;margin-top:4px;display:block;">📦 Cantidad en kilogramos disponibles</small>
-                        </div>
-                        <button type="submit" class="btn btn-primary">Registrar Producto</button>
-                    </form>
+                            <button type="submit" class="btn btn-primary">Registrar Producto</button>
+                        </form>
+                    </div>
                 </div>
 
+                <!-- Lista de productos -->
                 <div class="card">
                     <h3>Lista de Productos</h3>
                     <div style="margin-bottom:15px;">
-                        <button id="btnDescargarAlmacen" class="btn btn-success">📥 Descargar Inventario Completo</button>
+                        <button id="btnDescargarAlmacen" class="btn btn-success">
+                            📥 Descargar Inventario Completo
+                        </button>
                     </div>
                     <div class="search-bar">
                         <input type="text" id="buscarProducto" placeholder="Buscar por nombre o clave...">
@@ -210,7 +249,8 @@
                             <label>Buscar por Clave</label>
                             <div class="input-scan-group">
                                 <input type="number" id="buscarClaveVenta" placeholder="Ingrese clave del producto">
-                                <button type="button" class="btn-scan btn-scan-primary" id="btnEscanerVenta" title="Escanear código de barras">📷</button>
+                                <button type="button" class="btn-scan btn-scan-primary"
+                                        id="btnEscanerVenta" title="Escanear código de barras">📷</button>
                             </div>
                         </div>
                         <div class="form-group">
@@ -229,7 +269,8 @@
                     <!-- Cantidad normal -->
                     <div class="form-group" id="cantidadVentaGroup">
                         <label>Cantidad</label>
-                        <input type="number" id="cantidadVenta" min="1" value="1" placeholder="Presiona Enter para agregar.">
+                        <input type="number" id="cantidadVenta" min="1" value="1"
+                               placeholder="Presiona Enter para agregar.">
                     </div>
 
                     <!-- Venta a granel -->
@@ -262,7 +303,8 @@
                             </div>
                             <div class="form-group">
                                 <label>Cambio</label>
-                                <input type="text" id="cambioVenta" readonly style="background:#e2e8f0;font-weight:bold;">
+                                <input type="text" id="cambioVenta" readonly
+                                       style="background:#e2e8f0;font-weight:bold;">
                             </div>
                         </div>
                         <div style="display:flex;gap:10px;margin-top:10px;">
@@ -275,59 +317,71 @@
 
             <!-- ─── PROVEEDORES ─── -->
             <section id="proveedores" class="section hidden">
-                <div class="card">
-                    <h3>Registro de Proveedores</h3>
-                    <form id="formProveedor">
-                        <div class="form-group">
-                            <label>Nombre del Proveedor *</label>
-                            <input type="text" id="nombreProveedor" required>
-                        </div>
-                        <div class="form-row">
+
+                <!-- Formulario colapsable: Registrar Proveedor -->
+                <div class="collapsible-form-card">
+                    <div class="collapsible-form-header" id="headerRegistrarProveedor">
+                        <h3>🚚 Registrar Proveedor
+                            <span class="collapsible-hint">— toca para expandir</span>
+                        </h3>
+                        <span class="collapsible-toggle-icon">▼</span>
+                    </div>
+                    <div class="collapsible-form-body" id="bodyRegistrarProveedor">
+                        <form id="formProveedor">
                             <div class="form-group">
-                                <label>Teléfono (opcional)</label>
-                                <input type="tel" id="telefonoProveedor">
+                                <label>Nombre del Proveedor *</label>
+                                <input type="text" id="nombreProveedor" required>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label>Teléfono (opcional)</label>
+                                    <input type="tel" id="telefonoProveedor">
+                                </div>
+                                <div class="form-group">
+                                    <label>Email (opcional)</label>
+                                    <input type="email" id="emailProveedor">
+                                </div>
                             </div>
                             <div class="form-group">
-                                <label>Email (opcional)</label>
-                                <input type="email" id="emailProveedor">
-                            </div>
-                        </div>
-                        <div class="form-group">
-                            <label>Tipo de Reparto</label>
-                            <select id="tipoReparto">
-                                <option value="manual">Manual (Fecha específica)</option>
-                                <option value="constante">Constante (Días programados)</option>
-                            </select>
-                        </div>
-                        <div class="form-group" id="grupoFechaManual">
-                            <label>Próxima Visita</label>
-                            <input type="date" id="fechaVisita">
-                        </div>
-                        <div id="grupoDiasConstantes" class="hidden">
-                            <label>Días de Reparto</label>
-                            <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:10px;">
-                                <label style="display:flex;align-items:center;gap:5px;"><input type="checkbox" name="diasReparto" value="0"> Domingo</label>
-                                <label style="display:flex;align-items:center;gap:5px;"><input type="checkbox" name="diasReparto" value="1"> Lunes</label>
-                                <label style="display:flex;align-items:center;gap:5px;"><input type="checkbox" name="diasReparto" value="2"> Martes</label>
-                                <label style="display:flex;align-items:center;gap:5px;"><input type="checkbox" name="diasReparto" value="3"> Miércoles</label>
-                                <label style="display:flex;align-items:center;gap:5px;"><input type="checkbox" name="diasReparto" value="4"> Jueves</label>
-                                <label style="display:flex;align-items:center;gap:5px;"><input type="checkbox" name="diasReparto" value="5"> Viernes</label>
-                                <label style="display:flex;align-items:center;gap:5px;"><input type="checkbox" name="diasReparto" value="6"> Sábado</label>
-                            </div>
-                            <div class="form-group" style="margin-top:15px;">
-                                <label>Frecuencia de Reparto</label>
-                                <select id="frecuenciaReparto">
-                                    <option value="1">Cada semana</option>
-                                    <option value="2">Cada 2 semanas (quincenal)</option>
-                                    <option value="3">Cada 3 semanas</option>
+                                <label>Tipo de Reparto</label>
+                                <select id="tipoReparto">
+                                    <option value="manual">Manual (Fecha específica)</option>
+                                    <option value="constante">Constante (Días programados)</option>
                                 </select>
                             </div>
-                        </div>
-                        <div id="mensajeProveedor"></div>
-                        <button type="submit" class="btn btn-primary" style="margin-top:15px;">Registrar Proveedor</button>
-                    </form>
+                            <div class="form-group" id="grupoFechaManual">
+                                <label>Próxima Visita</label>
+                                <input type="date" id="fechaVisita">
+                            </div>
+                            <div id="grupoDiasConstantes" class="hidden">
+                                <label>Días de Reparto</label>
+                                <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:10px;">
+                                    <label style="display:flex;align-items:center;gap:5px;"><input type="checkbox" name="diasReparto" value="0"> Domingo</label>
+                                    <label style="display:flex;align-items:center;gap:5px;"><input type="checkbox" name="diasReparto" value="1"> Lunes</label>
+                                    <label style="display:flex;align-items:center;gap:5px;"><input type="checkbox" name="diasReparto" value="2"> Martes</label>
+                                    <label style="display:flex;align-items:center;gap:5px;"><input type="checkbox" name="diasReparto" value="3"> Miércoles</label>
+                                    <label style="display:flex;align-items:center;gap:5px;"><input type="checkbox" name="diasReparto" value="4"> Jueves</label>
+                                    <label style="display:flex;align-items:center;gap:5px;"><input type="checkbox" name="diasReparto" value="5"> Viernes</label>
+                                    <label style="display:flex;align-items:center;gap:5px;"><input type="checkbox" name="diasReparto" value="6"> Sábado</label>
+                                </div>
+                                <div class="form-group" style="margin-top:15px;">
+                                    <label>Frecuencia de Reparto</label>
+                                    <select id="frecuenciaReparto">
+                                        <option value="1">Cada semana</option>
+                                        <option value="2">Cada 2 semanas (quincenal)</option>
+                                        <option value="3">Cada 3 semanas</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div id="mensajeProveedor"></div>
+                            <button type="submit" class="btn btn-primary" style="margin-top:15px;">
+                                Registrar Proveedor
+                            </button>
+                        </form>
+                    </div>
                 </div>
 
+                <!-- Lista de proveedores -->
                 <div class="card">
                     <h3>Lista de Proveedores</h3>
                     <div class="search-bar">
@@ -441,17 +495,33 @@
                                 <p id="configUserEmail" style="color:#718096;font-size:14px;"></p>
                                 <p id="configProfileName" style="color:#4a5568;font-size:16px;font-weight:600;margin-top:5px;"></p>
                                 <p id="configProfileRole" style="color:#718096;font-size:13px;"></p>
-
-                                <!-- Badge de plan de suscripción -->
-                                <div id="configPlanBadge" style="margin-top:10px;">
-                                    <!-- Se rellena dinámicamente por app.js -->
-                                </div>
+                                <div id="configPlanBadge" style="margin-top:10px;"></div>
                             </div>
                             <div style="display:flex;gap:10px;flex-wrap:wrap;">
                                 <button id="btnChangeProfile" class="btn btn-primary">Cambiar Perfil</button>
                                 <button id="btnConfigLogout" class="btn btn-danger">Cerrar Sesión</button>
                             </div>
                         </div>
+                    </div>
+
+                    <!-- ── Meta de ventas diaria ── -->
+                    <div class="config-section">
+                        <h4>🎯 Meta de Ventas Diaria</h4>
+                        <p style="color:#718096;margin-bottom:16px;font-size:14px;">
+                            Define cuánto quieres vender cada día. La barra de progreso en el Dashboard
+                            se actualizará automáticamente con cada venta.
+                        </p>
+                        <div class="meta-ventas-config">
+                            <span style="font-size:18px;font-weight:600;color:#4a5568;">$</span>
+                            <input type="number" id="inputMetaVentas" min="0" step="50"
+                                   placeholder="Ej: 1500">
+                            <button id="btnGuardarMetaVentas" class="btn btn-primary">
+                                Guardar Meta
+                            </button>
+                        </div>
+                        <small style="color:#a0aec0;margin-top:8px;display:block;">
+                            Ingresa 0 para desactivar la barra de meta.
+                        </small>
                     </div>
 
                     <!-- Gestión de Usuarios (solo administradores) -->
@@ -463,9 +533,7 @@
                         <button id="btnCrearUsuario" class="btn btn-primary" style="margin-bottom:20px;">
                             ➕ Crear Nuevo Usuario
                         </button>
-                        <div id="listaUsuarios">
-                            <!-- Los usuarios se cargarán dinámicamente -->
-                        </div>
+                        <div id="listaUsuarios"></div>
                     </div>
 
                     <!-- Personalización de Colores -->
@@ -558,8 +626,10 @@
                     </div>
                 </div>
                 <div class="form-group" style="display:flex;align-items:center;gap:10px;margin-bottom:15px;">
-                    <input type="checkbox" id="editEsGranel" style="width:20px;height:20px;accent-color:var(--color-primario);cursor:pointer;">
-                    <label for="editEsGranel" style="margin:0;cursor:pointer;font-weight:600;color:var(--color-primario);">
+                    <input type="checkbox" id="editEsGranel"
+                           style="width:20px;height:20px;accent-color:var(--color-primario);cursor:pointer;">
+                    <label for="editEsGranel"
+                           style="margin:0;cursor:pointer;font-weight:600;color:var(--color-primario);">
                         ⚖️ Producto a Granel (venta por peso/kg)
                     </label>
                 </div>
@@ -657,12 +727,7 @@
         </div>
     </div>
 
-    <!-- ═══════════════════════════════════════════════════════
-         MODAL CREAR / EDITAR USUARIO
-         seccionPermisos muestra las opciones de nivel de acceso
-         solo para empleados. Para administradores se oculta porque
-         el admin siempre hereda el techo completo del plan.
-    ═══════════════════════════════════════════════════════ -->
+    <!-- Modal Crear / Editar Usuario -->
     <div id="modalUsuario" class="modal-overlay hidden" style="display:none;">
         <div class="modal-content">
             <div class="modal-header">
@@ -672,13 +737,11 @@
             <form id="formUsuario">
                 <input type="hidden" id="usuarioId">
 
-                <!-- Nombre -->
                 <div class="form-group">
                     <label>Nombre del Usuario *</label>
                     <input type="text" id="nombreUsuario" required placeholder="Ej: Juan Pérez">
                 </div>
 
-                <!-- Rol -->
                 <div class="form-group">
                     <label>Rol *</label>
                     <select id="rolUsuario" required>
@@ -690,7 +753,6 @@
                     </small>
                 </div>
 
-                <!-- NIP -->
                 <div class="nip-field-container">
                     <h5>🔒 NIP de Acceso (4 dígitos)</h5>
                     <div class="nip-display">
@@ -703,19 +765,17 @@
                     </div>
                 </div>
 
-                <!-- Nivel de acceso (solo empleados) -->
                 <div id="seccionPermisos" class="form-group" style="margin-top:20px;">
                     <label style="font-weight:700;font-size:15px;">🔐 Permisos</label>
                     <small style="color:#718096;display:block;margin-bottom:10px;">
                         Define qué acciones puede realizar este empleado.
                         Los módulos bloqueados por tu plan aparecen deshabilitados.
                     </small>
-                    <div id="listadoPermisos" style="max-height:300px;overflow-y:auto;border:2px solid #e2e8f0;border-radius:8px;padding:15px;background:#f7fafc;">
-                        <!-- Los permisos se cargarán dinámicamente -->
+                    <div id="listadoPermisos"
+                         style="max-height:300px;overflow-y:auto;border:2px solid #e2e8f0;border-radius:8px;padding:15px;background:#f7fafc;">
                     </div>
                 </div>
 
-                <!-- Botones -->
                 <div style="display:flex;gap:10px;margin-top:20px;">
                     <button type="submit" class="btn btn-primary">Guardar Usuario</button>
                     <button type="button" class="btn btn-secondary" id="btnCancelarUsuario">Cancelar</button>
@@ -724,9 +784,7 @@
         </div>
     </div>
 
-    <!-- ═══════════════════════════════════════════════════════
-         MODAL VERIFICACIÓN DE NIP
-    ═══════════════════════════════════════════════════════ -->
+    <!-- Modal Verificación de NIP -->
     <div id="modalNIP" class="nip-modal hidden" style="display:none;">
         <div class="nip-modal-content">
             <div class="nip-modal-header">
@@ -757,9 +815,7 @@
         </div>
     </div>
 
-    <!-- ═══════════════════════════════════════════════════════
-         MODAL ESCÁNER DE CÓDIGO DE BARRAS
-    ═══════════════════════════════════════════════════════ -->
+    <!-- Modal Escáner de Código de Barras -->
     <div id="modalEscaner" class="escaner-overlay hidden" style="display:none;">
         <div class="escaner-container">
             <div class="escaner-header">
@@ -779,27 +835,18 @@
                 </div>
             </div>
             <p id="escanerStatus" class="escaner-status">Iniciando cámara...</p>
-            <div id="escanerControlesAvanzados" class="escaner-controles-avanzados" style="display:none;">
-                <!-- Controles avanzados inyectados por escaner.js -->
-            </div>
+            <div id="escanerControlesAvanzados" class="escaner-controles-avanzados" style="display:none;"></div>
         </div>
     </div>
 
     <!-- ═══════════════════════════════════════════════════════
          SCRIPTS
     ═══════════════════════════════════════════════════════ -->
-    <!-- ZXing - Lector de códigos de barras -->
     <script src="https://unpkg.com/@zxing/library@0.20.0/umd/index.min.js"></script>
-
-    <!-- Firebase SDKs -->
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
-
-    <!-- Configuración de Firebase -->
     <script src="js/firebase-config.js"></script>
-
-    <!-- Aplicación -->
     <script type="module" src="js/app.js"></script>
 </body>
 </html>
