@@ -23,12 +23,14 @@ export class UIManager {
 
     // === NAVEGACIÓN ===
     mostrarSeccion(seccionId) {
-        // Verificar permisos
-        if (window.appInstance && window.appInstance.usuariosManager) {
-            const usuarioActual = window.appInstance.usuariosManager.obtenerUsuarioActual();
-            if (usuarioActual && !window.appInstance.usuariosManager.tienePermiso(seccionId)) {
-                window.appInstance.uiManager.alerta('No tienes permiso para acceder a esta sección');
-                return;
+        // La sección de administración no requiere permiso granular, se controla en app.js
+        if (seccionId !== 'administracion') {
+            if (window.appInstance && window.appInstance.usuariosManager) {
+                const usuarioActual = window.appInstance.usuariosManager.obtenerUsuarioActual();
+                if (usuarioActual && !window.appInstance.usuariosManager.tienePermiso(seccionId)) {
+                    window.appInstance.uiManager.alerta('No tienes permiso para acceder a esta sección');
+                    return;
+                }
             }
         }
 
@@ -101,6 +103,7 @@ export class UIManager {
             { id: 'ventas',         icono: '💰', texto: 'Realizar Venta' },
             { id: 'proveedores',    icono: '🚚', texto: 'Proveedores' },
             { id: 'reportes',       icono: '📈', texto: 'Reportes' },
+            { id: 'administracion', icono: '🛡️', texto: 'Administración' },
             { id: 'configuracion',  icono: '⚙️', texto: 'Configuración' }
         ];
         const html = menuItems.map(item => `
@@ -165,8 +168,7 @@ export class UIManager {
         if (!contenedor) return;
 
         if (producto.esGranel) {
-            // Para granel mostramos el kg disponible
-            const kgEnCarrito     = stockEnCarrito / 1000; // stockEnCarrito viene en gramos
+            const kgEnCarrito     = stockEnCarrito / 1000;
             const kgDisponible    = producto.stock - kgEnCarrito;
             const stockBajo       = kgDisponible < 0.5;
 
@@ -339,7 +341,6 @@ export class UIManager {
             </div>
         `;
 
-        // Sección gráfico (solo si puede generar reportes)
         const htmlGrafico = puedeGenerarRep && reporte.ventas.length > 0 ? `
             <div style="background:white;padding:25px;border-radius:12px;margin:20px 0;box-shadow:0 4px 12px rgba(0,0,0,0.1);">
                 <div style="margin-bottom:20px;display:flex;gap:10px;justify-content:center;">
@@ -356,7 +357,6 @@ export class UIManager {
             </div>
         ` : '';
 
-        // Ranking de productos
         const htmlRanking = puedeGenerarRep && reporte.ventas.length > 0 ? `
             <div style="margin:20px 0;">
                 <button id="btnMostrarRankingProductos" class="btn btn-primary">📋 Ver Ranking de Productos</button>
@@ -374,7 +374,6 @@ export class UIManager {
             </div>
         ` : '';
 
-        // Tickets / historial de ventas
         const htmlTickets = puedeVerVentas ? `
             <div id="seccionTickets">
                 <h4>${reporte.titulo}</h4>
@@ -550,7 +549,6 @@ export class UIManager {
         const gananciaAngulo = (reporte.ganancia    / total) * 2 * Math.PI;
         let currentAngle = -Math.PI / 2;
 
-        // Sector Costos
         ctx.beginPath(); ctx.moveTo(centerX, centerY);
         ctx.arc(centerX, centerY, radius, currentAngle, currentAngle + costoAngulo); ctx.closePath();
         const gradC = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, radius);
@@ -566,7 +564,6 @@ export class UIManager {
         ctx.fillText(`$${reporte.totalCostos.toFixed(2)}`, centerX + Math.cos(cMid) * (radius * 0.65), centerY + Math.sin(cMid) * (radius * 0.65) + 24);
         ctx.shadowBlur = 0; currentAngle += costoAngulo;
 
-        // Sector Ganancia
         ctx.beginPath(); ctx.moveTo(centerX, centerY);
         ctx.arc(centerX, centerY, radius, currentAngle, currentAngle + gananciaAngulo); ctx.closePath();
         const gradG = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, radius);

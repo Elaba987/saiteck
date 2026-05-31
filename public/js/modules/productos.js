@@ -4,9 +4,14 @@ import { StorageManager, STORAGE_KEYS } from './storage.js';
 
 export class ProductosManager {
     constructor() {
-        this.productos = [];
+        this.productos  = [];
         this.unsubscribe = null;
+        // Referencia al manager de auditoría (se inyecta desde app.js)
+        this._auditoria = null;
     }
+
+    // Permite inyectar el AuditoriaManager después de construir
+    setAuditoriaManager(mgr) { this._auditoria = mgr; }
 
     async cargarProductos() {
         this.productos = await StorageManager.loadAll(STORAGE_KEYS.PRODUCTOS);
@@ -26,17 +31,9 @@ export class ProductosManager {
         }
     }
 
-    obtenerTodos() {
-        return this.productos;
-    }
-
-    obtenerPorClave(clave) {
-        return this.productos.find(p => p.clave === parseInt(clave));
-    }
-
-    obtenerPorId(id) {
-        return this.productos.find(p => p.id === id);
-    }
+    obtenerTodos()        { return this.productos; }
+    obtenerPorClave(clave){ return this.productos.find(p => p.clave === parseInt(clave)); }
+    obtenerPorId(id)      { return this.productos.find(p => p.id === id); }
 
     existeClave(clave, excluirId = null) {
         return this.productos.some(p =>
@@ -52,23 +49,30 @@ export class ProductosManager {
         const esGranel = producto.esGranel === true || producto.esGranel === 'true';
 
         const nuevoProducto = {
-            clave: parseInt(producto.clave),
-            nombre: producto.nombre,
+            clave:        parseInt(producto.clave),
+            nombre:       producto.nombre,
             precioCompra: parseFloat(producto.precioCompra),
-            precioVenta: parseFloat(producto.precioVenta),
-            stock: parseFloat(producto.stock),          // kg si es granel, unidades si no
-            esGranel: esGranel
+            precioVenta:  parseFloat(producto.precioVenta),
+            stock:        parseFloat(producto.stock),
+            esGranel
         };
 
-        // Campos adicionales para granel
         if (esGranel) {
-            // precioVenta es el precio por kg, stock es en kg
             nuevoProducto.precioKilo = parseFloat(producto.precioVenta);
         }
 
         const resultado = await StorageManager.add(STORAGE_KEYS.PRODUCTOS, nuevoProducto);
 
         if (resultado.success) {
+            // ── Auditoría ──
+            this._auditoria?.registrar('PRODUCTO_CREAR', {
+                clave:        nuevoProducto.clave,
+                nombre:       nuevoProducto.nombre,
+                precioCompra: `$${nuevoProducto.precioCompra.toFixed(2)}`,
+                precioVenta:  `$${nuevoProducto.precioVenta.toFixed(2)}`,
+                stock:        `${nuevoProducto.stock}${esGranel ? ' kg' : ' uds'}`,
+                tipo:         esGranel ? 'Granel' : 'Normal'
+            });
             return { success: true, message: 'Producto registrado exitosamente' };
         }
 
@@ -90,12 +94,12 @@ export class ProductosManager {
         const esGranel = datos.esGranel === true || datos.esGranel === 'true';
 
         const datosActualizados = {
-            clave: claveNueva,
-            nombre: datos.nombre || producto.nombre,
+            clave:        claveNueva,
+            nombre:       datos.nombre       || producto.nombre,
             precioCompra: datos.precioCompra !== undefined ? parseFloat(datos.precioCompra) : producto.precioCompra,
-            precioVenta: datos.precioVenta !== undefined ? parseFloat(datos.precioVenta) : producto.precioVenta,
-            stock: datos.stock !== undefined ? parseFloat(datos.stock) : producto.stock,
-            esGranel: esGranel
+            precioVenta:  datos.precioVenta  !== undefined ? parseFloat(datos.precioVenta)  : producto.precioVenta,
+            stock:        datos.stock        !== undefined ? parseFloat(datos.stock)        : producto.stock,
+            esGranel
         };
 
         if (esGranel) {
@@ -105,6 +109,40 @@ export class ProductosManager {
         const resultado = await StorageManager.update(STORAGE_KEYS.PRODUCTOS, productoId, datosActualizados);
 
         if (resultado.success) {
+            // ── Auditoría: detectar qué cambió ──
+            const cambios = {};
+
+            if (datosActualizados.precioVenta !== producto.precioVenta) {
+                cambios.precioVentaAntes   = `$${producto.precioVenta.toFixed(2)}`;
+                cambios.precioVentaDespues = `$${datosActualizados.precioVenta.toFixed(2)}`;
+            }
+            if (datosActualizados.precioCompra !== producto.precioCompra) {
+                cambios.precioCompraAntes   = `$${producto.precioCompra.toFixed(2)}`;
+                cambios.precioCompraDespues = `$${datosActualizados.precioCompra.toFixed(2)}`;
+            }
+            if (datosActualizados.stock !== producto.stock) {
+                cambios.stockAntes   = `${producto.stock}`;
+                cambios.stockDespues = `${datosActualizados.stock}`;
+            }
+            if (datosActualizados.nombre !== producto.nombre) {
+                cambios.nombreAntes   = producto.nombre;
+                cambios.nombreDespues = datosActualizados.nombre;
+            }
+
+            // Decidir tipo específico según qué cambió
+            let tipoAudit = 'PRODUCTO_EDITAR';
+            if (cambios.precioVentaAntes || cambios.precioCompraAntes) {
+                tipoAudit = 'PRODUCTO_EDITAR_PRECIO';
+            } else if (cambios.stockAntes) {
+                tipoAudit = 'PRODUCTO_EDITAR_STOCK';
+            }
+
+            this._auditoria?.registrar(tipoAudit, {
+                clave:  producto.clave,
+                nombre: producto.nombre,
+                ...cambios
+            });
+
             return { success: true, message: 'Producto actualizado' };
         }
 
@@ -112,9 +150,18 @@ export class ProductosManager {
     }
 
     async eliminar(productoId) {
+        const producto = this.obtenerPorId(productoId);
         const resultado = await StorageManager.delete(STORAGE_KEYS.PRODUCTOS, productoId);
 
         if (resultado.success) {
+            // ── Auditoría ──
+            if (producto) {
+                this._auditoria?.registrar('PRODUCTO_ELIMINAR', {
+                    clave:  producto.clave,
+                    nombre: producto.nombre,
+                    stock:  `${producto.stock}${producto.esGranel ? ' kg' : ' uds'}`
+                });
+            }
             return { success: true, message: 'Producto eliminado' };
         }
 
@@ -133,19 +180,17 @@ export class ProductosManager {
         const ordenadores = {
             'mayor': (a, b) => b.stock - a.stock,
             'menor': (a, b) => a.stock - b.stock,
-            'az': (a, b) => a.nombre.localeCompare(b.nombre),
-            'za': (a, b) => b.nombre.localeCompare(a.nombre)
+            'az':    (a, b) => a.nombre.localeCompare(b.nombre),
+            'za':    (a, b) => b.nombre.localeCompare(a.nombre)
         };
-
-        return ordenadores[criterio] ? [...this.productos].sort(ordenadores[criterio]) : [...this.productos];
+        return ordenadores[criterio]
+            ? [...this.productos].sort(ordenadores[criterio])
+            : [...this.productos];
     }
 
     obtenerBajoStock(umbral = 5) {
         return this.productos.filter(p => {
-            if (p.esGranel) {
-                // Para granel, umbral es en kg (ej: menos de 1 kg)
-                return p.stock < 1;
-            }
+            if (p.esGranel) return p.stock < 1;
             return p.stock < umbral;
         });
     }
@@ -156,19 +201,20 @@ export class ProductosManager {
             return { success: false, message: 'Producto no encontrado' };
         }
 
-        // Para granel: cantidad viene en gramos, convertir a kg
-        const reduccion = producto.esGranel ? (cantidad / 1000) : cantidad;
+        const reduccion  = producto.esGranel ? (cantidad / 1000) : cantidad;
 
         if (producto.stock < reduccion) {
             return { success: false, message: 'Stock insuficiente' };
         }
 
         const nuevoStock = parseFloat((producto.stock - reduccion).toFixed(3));
-        const resultado = await StorageManager.update(STORAGE_KEYS.PRODUCTOS, producto.id, {
+        const resultado  = await StorageManager.update(STORAGE_KEYS.PRODUCTOS, producto.id, {
             stock: nuevoStock
         });
 
         if (resultado.success) {
+            // ── Auditoría (silenciosa, la registra la venta) ──
+            // No duplicamos con PRODUCTO_STOCK_REDUCIDO aquí; se delega a ventas.js
             return { success: true, producto: { ...producto, stock: nuevoStock } };
         }
 
@@ -177,16 +223,16 @@ export class ProductosManager {
 
     generarArchivoAlmacen() {
         const totalCompra = this.productos.reduce((sum, p) => sum + (p.precioCompra * p.stock), 0);
-        const totalVenta = this.productos.reduce((sum, p) => sum + (p.precioVenta * p.stock), 0);
+        const totalVenta  = this.productos.reduce((sum, p) => sum + (p.precioVenta  * p.stock), 0);
 
         return `INVENTARIO COMPLETO DE ALMACÉN
 Generado el: ${new Date().toLocaleString()}
 ================================================
 
 ${this.productos.map((p, i) => {
-    const margen = p.precioVenta - p.precioCompra;
+    const margen     = p.precioVenta - p.precioCompra;
     const porcentaje = p.precioCompra > 0 ? ((margen / p.precioCompra) * 100).toFixed(1) : '0.0';
-    const tipoStock = p.esGranel ? `${p.stock.toFixed(3)} kg` : `${p.stock} unidades`;
+    const tipoStock  = p.esGranel ? `${p.stock.toFixed(3)} kg` : `${p.stock} unidades`;
     const tipoPrecio = p.esGranel ? `$${p.precioVenta.toFixed(2)}/kg` : `$${p.precioVenta.toFixed(2)}`;
 
     return `Producto #${i + 1}${p.esGranel ? ' [GRANEL]' : ''}
@@ -210,12 +256,12 @@ Valor de inventario (venta): $${totalVenta.toFixed(2)}
     descargarArchivoAlmacen() {
         const contenido = this.generarArchivoAlmacen();
         const blob = new Blob([contenido], { type: 'text/plain' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
+        const url  = URL.createObjectURL(blob);
+        const a    = document.createElement('a');
         const fecha = new Date();
 
-        a.href = url;
-        a.download = `ALMACEN_${fecha.getDate()}-${fecha.getMonth() + 1}-${fecha.getFullYear()}_${fecha.getHours()}-${fecha.getMinutes()}.txt`;
+        a.href     = url;
+        a.download = `ALMACEN_${fecha.getDate()}-${fecha.getMonth()+1}-${fecha.getFullYear()}_${fecha.getHours()}-${fecha.getMinutes()}.txt`;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);

@@ -4,10 +4,13 @@ import { StorageManager, STORAGE_KEYS } from './storage.js';
 
 export class VentasManager {
     constructor() {
-        this.ventas = [];
+        this.ventas      = [];
         this.ventaActual = [];
         this.unsubscribe = null;
+        this._auditoria  = null;
     }
+
+    setAuditoriaManager(mgr) { this._auditoria = mgr; }
 
     async cargarVentas() {
         this.ventas = await StorageManager.loadAll(STORAGE_KEYS.VENTAS);
@@ -22,18 +25,11 @@ export class VentasManager {
     }
 
     detenerEscucha() {
-        if (this.unsubscribe) {
-            this.unsubscribe();
-        }
+        if (this.unsubscribe) this.unsubscribe();
     }
 
-    obtenerTodas() {
-        return this.ventas;
-    }
-
-    obtenerVentaActual() {
-        return this.ventaActual;
-    }
+    obtenerTodas()        { return this.ventas; }
+    obtenerVentaActual()  { return this.ventaActual; }
 
     // ─── FILTROS POR FECHA ────────────────────────────────────────────────
 
@@ -45,16 +41,13 @@ export class VentasManager {
 
     obtenerVentasPorRango(fechaInicio, fechaFin) {
         return this.ventas.filter(v => {
-            const fechaVenta = new Date(v.fecha);
-            return fechaVenta >= fechaInicio && fechaVenta <= fechaFin;
+            const fv = new Date(v.fecha);
+            return fv >= fechaInicio && fv <= fechaFin;
         });
     }
 
     // ─── CARRITO ──────────────────────────────────────────────────────────
 
-    /**
-     * Agrega un producto normal (por unidades) a la venta actual.
-     */
     agregarItemVenta(producto, cantidad) {
         if (producto.esGranel) {
             return { success: false, message: 'Usar agregarItemGranel para productos a granel' };
@@ -66,24 +59,24 @@ export class VentasManager {
 
         if (itemExistente) {
             itemExistente.cantidad += parseInt(cantidad);
-            itemExistente.subtotal = itemExistente.producto.precioVenta * itemExistente.cantidad;
+            itemExistente.subtotal  = itemExistente.producto.precioVenta * itemExistente.cantidad;
             return { success: true, item: itemExistente, agrupado: true };
         }
 
         const productoSanitizado = {
-            clave: producto.clave,
-            nombre: producto.nombre,
+            clave:        producto.clave,
+            nombre:       producto.nombre,
             precioCompra: producto.precioCompra,
-            precioVenta: producto.precioVenta,
-            stock: producto.stock,
-            esGranel: false
+            precioVenta:  producto.precioVenta,
+            stock:        producto.stock,
+            esGranel:     false
         };
 
         const item = {
-            producto: productoSanitizado,
-            cantidad: parseInt(cantidad),
-            subtotal: producto.precioVenta * parseInt(cantidad),
-            esGranel: false
+            producto:  productoSanitizado,
+            cantidad:  parseInt(cantidad),
+            subtotal:  producto.precioVenta * parseInt(cantidad),
+            esGranel:  false
         };
 
         this.ventaActual.push(item);
@@ -91,37 +84,29 @@ export class VentasManager {
     }
 
     /**
-     * Agrega un producto a granel a la venta actual.
-     * @param {Object} producto - Producto con esGranel:true
-     * @param {number} gramos   - Cantidad en gramos
-     * @param {number} precio   - Precio calculado para esa cantidad
-     *
-     * CORRECCIÓN DE COSTO PROPORCIONAL:
-     * El costo del proveedor se calcula proporcionalmente a los gramos vendidos.
-     * Ejemplo: producto cuesta $100/kg → vender 100g → costoGranel = $10 (no $100).
-     * El campo costoGranel se guarda en el ítem para que reportes.js lo use
-     * en lugar de multiplicar precioCompra × cantidad completa.
+     * Agrega un producto a granel.
+     * costoGranel = costo proporcional a los gramos vendidos.
      */
     agregarItemGranel(producto, gramos, precio) {
-        const costoKilo = producto.precioCompra || 0;
+        const costoKilo        = producto.precioCompra || 0;
         const costoProporcional = costoKilo * (parseFloat(gramos) / 1000);
 
         const productoSanitizado = {
-            clave: producto.clave,
-            nombre: producto.nombre,
+            clave:        producto.clave,
+            nombre:       producto.nombre,
             precioCompra: producto.precioCompra,
-            precioVenta: producto.precioVenta,
-            stock: producto.stock,
-            esGranel: true
+            precioVenta:  producto.precioVenta,
+            stock:        producto.stock,
+            esGranel:     true
         };
 
         const item = {
-            producto: productoSanitizado,
-            cantidad: 1,
-            gramos: parseFloat(gramos),
-            subtotal: parseFloat(precio),
+            producto:    productoSanitizado,
+            cantidad:    1,
+            gramos:      parseFloat(gramos),
+            subtotal:    parseFloat(precio),
             costoGranel: parseFloat(costoProporcional.toFixed(4)),
-            esGranel: true
+            esGranel:    true
         };
 
         this.ventaActual.push(item);
@@ -134,16 +119,12 @@ export class VentasManager {
         }
 
         const item = this.ventaActual[index];
-
         if (item.esGranel) {
             return { success: false, message: 'Usa la interfaz de granel para modificar' };
         }
 
         const nuevaCantidad = item.cantidad + cambio;
-
-        if (nuevaCantidad <= 0) {
-            return this.quitarItemVenta(index);
-        }
+        if (nuevaCantidad <= 0) return this.quitarItemVenta(index);
 
         item.cantidad = nuevaCantidad;
         item.subtotal = item.producto.precioVenta * item.cantidad;
@@ -154,7 +135,6 @@ export class VentasManager {
         if (index < 0 || index >= this.ventaActual.length) {
             return { success: false, message: 'Índice inválido' };
         }
-
         this.ventaActual.splice(index, 1);
         return { success: true };
     }
@@ -163,16 +143,10 @@ export class VentasManager {
         return this.ventaActual.reduce((sum, item) => sum + item.subtotal, 0);
     }
 
-    /**
-     * Obtiene el stock "ocupado" por el carrito para un producto dado.
-     * Para granel devuelve los gramos totales en carrito.
-     */
     obtenerStockEnCarrito(clave) {
         return this.ventaActual
             .filter(item => item.producto.clave === clave)
-            .reduce((sum, item) => {
-                return sum + (item.esGranel ? item.gramos : item.cantidad);
-            }, 0);
+            .reduce((sum, item) => sum + (item.esGranel ? item.gramos : item.cantidad), 0);
     }
 
     // ─── FINALIZAR VENTA ─────────────────────────────────────────────────
@@ -186,32 +160,37 @@ export class VentasManager {
 
         const usuarioActual = window.appInstance?.usuariosManager?.obtenerUsuarioActual?.();
         const usuario = usuarioActual
-            ? {
-                id: usuarioActual.id,
-                nombre: usuarioActual.nombre,
-                rol: usuarioActual.rol
-            }
-            : {
-                id: 'system',
-                nombre: 'Sistema',
-                rol: 'sistema'
-            };
+            ? { id: usuarioActual.id, nombre: usuarioActual.nombre, rol: usuarioActual.rol }
+            : { id: 'system', nombre: 'Sistema', rol: 'sistema' };
 
         const venta = {
-            items: [...this.ventaActual],
+            items:   [...this.ventaActual],
             total,
-            fecha: new Date().toISOString(),
+            fecha:   new Date().toISOString(),
             usuario
         };
 
         const resultado = await StorageManager.add(STORAGE_KEYS.VENTAS, venta);
 
         if (resultado.success) {
-            const numeroTicket = this.ventas.length + 1;
+            const numeroTicket  = this.ventas.length + 1;
             const ventaFinalizada = { ...venta, numeroTicket, id: resultado.id };
 
-            this.ventaActual = [];
+            // ── Auditoría ──
+            const resumenItems = this.ventaActual
+                .map(i => i.esGranel
+                    ? `${i.producto.nombre} ${i.gramos}g`
+                    : `${i.producto.nombre} ×${i.cantidad}`)
+                .join(', ');
 
+            this._auditoria?.registrar('VENTA_CREAR', {
+                ticket:   `#${numeroTicket}`,
+                total:    `$${total.toFixed(2)}`,
+                items:    resumenItems,
+                cantidad: this.ventaActual.length
+            }, usuario);
+
+            this.ventaActual = [];
             return { success: true, venta: ventaFinalizada };
         }
 
@@ -221,7 +200,7 @@ export class VentasManager {
     // ─── TICKET ──────────────────────────────────────────────────────────
 
     generarTicket(venta, numeroTicket) {
-        const fecha = new Date(venta.fecha);
+        const fecha         = new Date(venta.fecha);
         const usuarioNombre = venta.usuario?.nombre || 'Sistema';
 
         return `======= TICKET DE VENTA =======
@@ -241,7 +220,7 @@ ${venta.items.map(item => {
 
 ================================
 TOTAL: $${venta.total.toFixed(2)}
-PAGO: $${venta.pago ? venta.pago.toFixed(2) : venta.total.toFixed(2)}
+PAGO: $${venta.pago   ? venta.pago.toFixed(2)   : venta.total.toFixed(2)}
 CAMBIO: $${venta.cambio ? venta.cambio.toFixed(2) : '0.00'}
 ================================
 
@@ -251,16 +230,22 @@ CAMBIO: $${venta.cambio ? venta.cambio.toFixed(2) : '0.00'}
 
     descargarTicket(venta, numeroTicket) {
         const contenido = this.generarTicket(venta, numeroTicket);
-        const blob = new Blob([contenido], { type: 'text/plain' });
-        const url  = URL.createObjectURL(blob);
-        const a    = document.createElement('a');
+        const blob  = new Blob([contenido], { type: 'text/plain' });
+        const url   = URL.createObjectURL(blob);
+        const a     = document.createElement('a');
         const fecha = new Date(venta.fecha);
 
         a.href     = url;
-        a.download = `TICKET_${numeroTicket}_${fecha.getDate()}-${fecha.getMonth() + 1}-${fecha.getFullYear()}_${fecha.getHours()}-${fecha.getMinutes()}.txt`;
+        a.download = `TICKET_${numeroTicket}_${fecha.getDate()}-${fecha.getMonth()+1}-${fecha.getFullYear()}_${fecha.getHours()}-${fecha.getMinutes()}.txt`;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
+
+        // ── Auditoría ──
+        this._auditoria?.registrar('VENTA_TICKET_DESCARGADO', {
+            ticket: `#${numeroTicket}`,
+            total:  `$${venta.total.toFixed(2)}`
+        });
     }
 }

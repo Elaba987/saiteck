@@ -108,13 +108,11 @@
             <!-- ─── DASHBOARD ─── -->
             <section id="dashboard" class="section">
 
-                <!-- Cards de estadísticas -->
                 <div class="card">
                     <h3>📊 Panel de Control</h3>
                     <div id="statsGrid" class="stats-grid"></div>
                 </div>
 
-                <!-- Barra de meta de ventas -->
                 <div class="dashboard-meta-card">
                     <h3 style="color:#2d3748;margin-bottom:16px;font-size:18px;border-bottom:3px solid var(--color-primario);padding-bottom:10px;">
                         🎯 Progreso de Meta Diaria
@@ -122,16 +120,13 @@
                     <div id="dashboardMetaVentas"></div>
                 </div>
 
-                <!-- Botón descargar inventario -->
                 <div id="dashboardBotonInventario"></div>
 
-                <!-- Alertas de stock -->
                 <div class="card">
                     <h3>⚠️ Alertas de Stock Bajo</h3>
                     <div id="alertasStock"></div>
                 </div>
 
-                <!-- Próximas visitas -->
                 <div class="card">
                     <h3>🚚 Próximas Visitas de Proveedores</h3>
                     <div id="proximasVisitas"></div>
@@ -141,7 +136,6 @@
             <!-- ─── PRODUCTOS ─── -->
             <section id="productos" class="section hidden">
 
-                <!-- Formulario colapsable: Registrar Producto -->
                 <div class="collapsible-form-card">
                     <div class="collapsible-form-header" id="headerRegistrarProducto">
                         <h3>📦 Registrar Producto
@@ -166,7 +160,6 @@
                                 </div>
                             </div>
 
-                            <!-- Checkbox granel -->
                             <div class="form-group" style="display:flex;align-items:center;gap:10px;margin-bottom:15px;">
                                 <input type="checkbox" id="esGranel"
                                        style="width:20px;height:20px;accent-color:var(--color-primario);cursor:pointer;">
@@ -203,7 +196,6 @@
                     </div>
                 </div>
 
-                <!-- Lista de productos -->
                 <div class="card">
                     <h3>Lista de Productos</h3>
                     <div style="margin-bottom:15px;">
@@ -266,14 +258,12 @@
                     </div>
                     <div id="infoProductoVenta"></div>
 
-                    <!-- Cantidad normal -->
                     <div class="form-group" id="cantidadVentaGroup">
                         <label>Cantidad</label>
                         <input type="number" id="cantidadVenta" min="1" value="1"
                                placeholder="Presiona Enter para agregar.">
                     </div>
 
-                    <!-- Venta a granel -->
                     <div id="granelVentaGroup" style="display:none;">
                         <div class="form-row">
                             <div class="form-group">
@@ -318,7 +308,6 @@
             <!-- ─── PROVEEDORES ─── -->
             <section id="proveedores" class="section hidden">
 
-                <!-- Formulario colapsable: Registrar Proveedor -->
                 <div class="collapsible-form-card">
                     <div class="collapsible-form-header" id="headerRegistrarProveedor">
                         <h3>🚚 Registrar Proveedor
@@ -381,7 +370,6 @@
                     </div>
                 </div>
 
-                <!-- Lista de proveedores -->
                 <div class="card">
                     <h3>Lista de Proveedores</h3>
                     <div class="search-bar">
@@ -481,6 +469,19 @@
                 </div>
             </section>
 
+            <!-- ─── ADMINISTRACIÓN / AUDITORÍA ─── -->
+            <section id="administracion" class="section hidden">
+                <div class="card">
+                    <div id="adminPanelContenido">
+                        <!-- AdminPanelManager renderiza aquí -->
+                        <div style="text-align:center;padding:60px 20px;color:#718096;">
+                            <span style="font-size:48px;">🛡️</span>
+                            <p style="margin-top:16px;font-size:16px;">Cargando panel de administración...</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
             <!-- ─── CONFIGURACIÓN ─── -->
             <section id="configuracion" class="section hidden">
                 <div class="card">
@@ -504,7 +505,7 @@
                         </div>
                     </div>
 
-                    <!-- ── Meta de ventas diaria ── -->
+                    <!-- Meta de ventas diaria -->
                     <div class="config-section">
                         <h4>🎯 Meta de Ventas Diaria</h4>
                         <p style="color:#718096;margin-bottom:16px;font-size:14px;">

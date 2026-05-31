@@ -1,0 +1,71 @@
+Log de Actualización - SAITECK
+********************************************************************************************************
+********************************************************************************************************
+********************************************************************************************************
+********************************************************************************************************
+
+V a.1.0 - 25 de Mayo de 2026
+
+Características Clave e Inclusiones por Módulo
+1. Panel de Control (Dashboard)
+Indicadores en Tiempo Real: Visualización dinámica de estadísticas clave del negocio.
+
+Monitoreo de Metas: Implementación de una barra de progreso para el seguimiento de la meta diaria de ventas configurada por la administración.
+
+Alertas Tempranas: Sistema automático de detección para notificar productos con stock bajo.
+
+Agenda de Logística: Sección interactiva para visualizar las próximas visitas programadas de los proveedores.
+
+2. Módulo de Inventario y Productos
+Gestión ABCC: Alta, baja, cambios y consultas de productos con soporte para claves de barras, precios de compra y venta.
+
+Venta por Unidad y Granel: Soporte integrado para productos cuantificables por pieza o mediante peso en kilogramos con precisión decimal (kg).
+
+Optimización de Pantalla: Formularios colapsables integrados para agilizar el registro sin sobrecargar el espacio visual.
+
+3. Punto de Venta (Módulo Ventas)
+Caja Auxiliar de Cobro: Interfaz optimizada para el ingreso del efectivo entregado por el cliente con cálculo automatizado del cambio correspondiente.
+
+Acceso Directo: Función de "Pago Exacto" incorporada para agilizar transacciones rápidas.
+
+Lector de Códigos: Auto-enfoque automático al entrar al módulo para recibir lecturas de escáneres físicos de manera fluida.
+
+4. Catálogo de Proveedores
+Control de Proveedores: Registro estructurado de socios comerciales y seguimiento de sus calendarios de entrega en el negocio.
+
+5. Reportes y Estadísticas Avanzadas
+Filtros Temporales: Herramienta de desglose financiero ajustable por mes o años específicos.
+
+Análisis de Utilidad: Generación gráfica a través de Canvas (gráficos de sectores) para contrastar los costos de inversión contra el margen neto de ganancia.
+
+6. Seguridad, Perfiles y Roles (Control de Acceso)
+Autenticación de Doble Nivel: 1. Login maestro mediante correo electrónico y contraseña.
+2. Switch interactivo de perfiles de trabajo rápidos mediante la validación de un NIP de 4 dígitos a través de un teclado digital virtual integrado.
+
+Políticas de Privacidad por Rol: Distinción de capacidades entre perfiles de Administrador y Empleado, limitando visualizaciones o permisos de edición/eliminación de acuerdo a sus configuraciones individuales.
+
+7. Integración Tecnológica y UI/UX
+Escáner de Cámara Integrado: Módulo para la captura e interpretación de códigos de barras directo en los formularios de registro y checkout mediante la cámara del dispositivo.
+
+Diseño Responsivo (Mobile-First): Interfaz adaptativa con barra de navegación lateral colapsable (menú hamburguesa) para un correcto funcionamiento en teléfonos inteligentes, tabletas y computadoras de escritorio.
+
+Personalización del Entorno: Módulo de configuraciones estéticas capaz de sincronizar la paleta de colores del negocio de manera remota.
+
+Detalles de Arquitectura Técnica (Línea Base)
+Frontend: Single Page Application (SPA) construida con HTML5 nativo, CSS moderno con variables globales y JavaScript modular ES6.
+
+Base de Datos & Backend: Conectores preparados para sincronización remota e instantánea y almacenamiento en Firestore / Firebase (Seguimiento mediante reglas de seguridad de bases de datos e índices).
+
+
+********************************************************************************************************
+********************************************************************************************************
+********************************************************************************************************
+********************************************************************************************************
+v a.1.1 - 27 de Mayo de 2026
+Añadida meta de venta diaria.
+Registrar producto y Registrar proveedores ahora son ventanas desplegables.
+
+********************************************************************************************************
+********************************************************************************************************
+********************************************************************************************************
+********************************************************************************************************

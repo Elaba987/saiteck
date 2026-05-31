@@ -9,6 +9,8 @@ import { UIManager }           from './modules/ui.js';
 import { ConfiguracionManager } from './modules/configuracion.js';
 import { UsuariosManager }     from './modules/usuarios.js';
 import { EscanerManager }      from './modules/escaner.js';
+import { AuditoriaManager }    from './modules/auditoria.js';
+import { AdminPanelManager }   from './modules/adminPanel.js';
 
 class TiendaApp {
     constructor() {
@@ -25,6 +27,8 @@ class TiendaApp {
         this.configuracionManager = new ConfiguracionManager();
         this.usuariosManager      = new UsuariosManager();
         this.escanerManager       = new EscanerManager();
+        this.auditoriaManager     = new AuditoriaManager();
+        this.adminPanelManager    = null; // se inicializa tras cargar usuarios
         this.productoSeleccionado = null;
         this.datosInicializados   = false;
         this.init();
@@ -42,7 +46,7 @@ class TiendaApp {
         this.inicializarFormulariosColapsables();
 
         setTimeout(() => {
-            this.configuracionManager.inicializar();
+            this.configuracionManager.inicializar(this.auditoriaManager);
         }, 500);
     }
 
@@ -50,9 +54,7 @@ class TiendaApp {
     // FORMULARIOS COLAPSABLES (Registrar Producto / Proveedor)
     // ============================================================
     inicializarFormulariosColapsables() {
-        // Producto
         this._bindCollapsible('headerRegistrarProducto', 'bodyRegistrarProducto');
-        // Proveedor
         this._bindCollapsible('headerRegistrarProveedor', 'bodyRegistrarProveedor');
     }
 
@@ -113,6 +115,17 @@ class TiendaApp {
         try {
             this.uiManager.mostrarCargando();
             await this.usuariosManager.inicializar();
+
+            // Inyectar auditoría en todos los managers que la usan
+            this.productosManager.setAuditoriaManager(this.auditoriaManager);
+            this.ventasManager.setAuditoriaManager(this.auditoriaManager);
+            this.proveedoresManager.setAuditoriaManager(this.auditoriaManager);
+
+            // Inicializar AdminPanelManager ahora que ya tenemos usuarios
+            this.adminPanelManager = new AdminPanelManager(
+                this.auditoriaManager,
+                this.usuariosManager
+            );
 
             if (window.configuracionManager) {
                 await Promise.all([
@@ -345,6 +358,12 @@ class TiendaApp {
 
         this.usuariosManager.establecerUsuarioActual(perfil);
 
+        // Registrar inicio de sesión de perfil
+        this.auditoriaManager.registrar('SESION_INICIO', {
+            perfil: perfil.nombre,
+            rol:    perfil.rol
+        }, perfil);
+
         if (this.datosInicializados) {
             this.datosInicializados = false;
             this.ventasManager.ventaActual = [];
@@ -357,7 +376,12 @@ class TiendaApp {
     actualizarMenuSegunPermisos() {
         document.querySelectorAll('.menu-item').forEach(item => {
             const seccion = item.dataset.section;
-            item.style.display = this.usuariosManager.tienePermiso(seccion) ? 'flex' : 'none';
+            // La sección de administración solo para admins
+            if (seccion === 'administracion') {
+                item.style.display = this.usuariosManager.esAdministrador() ? 'flex' : 'none';
+            } else {
+                item.style.display = this.usuariosManager.tienePermiso(seccion) ? 'flex' : 'none';
+            }
         });
     }
 
@@ -402,14 +426,27 @@ class TiendaApp {
             if (menuItem) {
                 const seccion = menuItem.dataset.section;
                 this.uiManager.mostrarSeccion(seccion);
-                if (seccion === 'dashboard') this.actualizarDashboard();
-                if (seccion === 'reportes')  this.mostrarOpcionesReporte();
+                if (seccion === 'dashboard')      this.actualizarDashboard();
+                if (seccion === 'reportes')       this.mostrarOpcionesReporte();
+                if (seccion === 'administracion') this._activarAdminPanel();
             }
         });
         document.getElementById('statsGrid').addEventListener('click', (e) => {
             const statCard = e.target.closest('.stat-card');
             if (statCard?.dataset.section) this.uiManager.mostrarSeccion(statCard.dataset.section);
         });
+    }
+
+    // Activa el panel de administración / auditoría
+    async _activarAdminPanel() {
+        if (!this.usuariosManager.esAdministrador()) return;
+        if (!this.adminPanelManager) {
+            this.adminPanelManager = new AdminPanelManager(
+                this.auditoriaManager,
+                this.usuariosManager
+            );
+        }
+        await this.adminPanelManager.activar();
     }
 
     inicializarEventListeners() {
@@ -473,7 +510,7 @@ class TiendaApp {
     }
 
     _toggleCamposEditarGranel() {
-        const esGranel       = document.getElementById('editEsGranel').checked;
+        const esGranel        = document.getElementById('editEsGranel').checked;
         const labelEditStock  = document.getElementById('labelEditStock');
         const labelEditPrecioV = document.getElementById('labelEditPrecioVenta');
         if (esGranel) {
@@ -505,10 +542,9 @@ class TiendaApp {
             this.uiManager.limpiarFormulario(document.getElementById('formProducto'));
             if (document.getElementById('esGranel')) document.getElementById('esGranel').checked = false;
             this._toggleCamposGranel();
-            // Colapsar el formulario tras registrar
-            const body = document.getElementById('bodyRegistrarProducto');
+            const body   = document.getElementById('bodyRegistrarProducto');
             const header = document.getElementById('headerRegistrarProducto');
-            const icon = header?.querySelector('.collapsible-toggle-icon');
+            const icon   = header?.querySelector('.collapsible-toggle-icon');
             body?.classList.remove('open');
             header?.classList.remove('open');
             icon?.classList.remove('open');
@@ -986,7 +1022,6 @@ class TiendaApp {
             document.querySelectorAll('input[name="diasReparto"]').forEach(cb => cb.checked = false);
             document.getElementById('grupoFechaManual')?.classList.remove('hidden');
             document.getElementById('grupoDiasConstantes')?.classList.add('hidden');
-            // Colapsar el formulario tras registrar
             const body   = document.getElementById('bodyRegistrarProveedor');
             const header = document.getElementById('headerRegistrarProveedor');
             const icon   = header?.querySelector('.collapsible-toggle-icon');
@@ -1282,7 +1317,6 @@ class TiendaApp {
             }
         }
 
-        // Rellenar input de meta en configuración
         this.configuracionManager.actualizarInputMeta();
 
         const seccionGestion = document.getElementById('seccionGestionUsuarios');
@@ -1335,6 +1369,16 @@ class TiendaApp {
     }
 
     async cambiarPerfil() {
+        const usuarioSaliente = this.usuariosManager.obtenerUsuarioActual();
+
+        // Registrar cierre de sesión antes de limpiar
+        if (usuarioSaliente) {
+            await this.auditoriaManager.registrar('SESION_CIERRE', {
+                perfil: usuarioSaliente.nombre,
+                rol:    usuarioSaliente.rol
+            }, usuarioSaliente);
+        }
+
         this.ventasManager.ventaActual = [];
         this.actualizarVistaVentaActual();
         this.usuariosManager.cerrarSesionPerfil();
@@ -1507,6 +1551,18 @@ class TiendaApp {
             : await this.usuariosManager.crearUsuario(datos);
 
         if (resultado.success) {
+            // Auditoría de usuario
+            if (usuarioId) {
+                this.auditoriaManager.registrar('USUARIO_EDITAR', {
+                    nombre, rol,
+                    permisos: permisos.length > 0 ? `${permisos.length} permiso(s)` : 'Acceso total'
+                });
+            } else {
+                this.auditoriaManager.registrar('USUARIO_CREAR', {
+                    nombre, rol,
+                    permisos: permisos.length > 0 ? `${permisos.length} permiso(s)` : 'Acceso total'
+                });
+            }
             this.cerrarModalUsuario();
             this.cargarListaUsuarios();
             this.uiManager.alerta(usuarioId ? 'Usuario actualizado correctamente' : 'Usuario creado correctamente');
@@ -1579,8 +1635,16 @@ class TiendaApp {
                     this.mostrarModalUsuario(id);
                 } else if (accion === 'eliminar-usuario') {
                     if (this.uiManager.confirmar('¿Eliminar este usuario? Esta acción no se puede deshacer.')) {
+                        const usuario = this.usuariosManager.obtenerPorId(id);
                         const resultado = await this.usuariosManager.eliminarUsuario(id);
                         if (resultado.success) {
+                            // Auditoría
+                            if (usuario) {
+                                this.auditoriaManager.registrar('USUARIO_ELIMINAR', {
+                                    nombre: usuario.nombre,
+                                    rol:    usuario.rol
+                                });
+                            }
                             this.cargarListaUsuarios();
                             this.uiManager.alerta('Usuario eliminado correctamente');
                         } else {
