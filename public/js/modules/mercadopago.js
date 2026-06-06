@@ -1,43 +1,29 @@
 // mercadopago.js - Integración con Mercado Pago Point Smart 2
-// API: Point Payment Intent (sandbox)
+// Todas las llamadas pasan por la Cloud Function "mpPoint" para evitar CORS.
 
 export class MercadoPagoManager {
     constructor() {
-        // ── Credenciales ──
-        // IMPORTANTE: En producción estas deben venir de Firestore o de un backend seguro.
-        // Para sandbox usa las credenciales de prueba de tu cuenta de desarrollador.
-        this._accessToken = 'APP_USR-1092455173337722-060523-1e9533e9a8dd66757579f5f653dd74f1-3452805753';
-        this._publicKey   = 'APP_USR-07ab26ca-bf15-484a-bbdc-8750f579e7d8';
+        // URL de la Cloud Function desplegada.
+        // En desarrollo local con el emulador usa: http://localhost:5001/TU_PROYECTO/us-central1/mpPoint
+        // En producción Firebase la asigna automáticamente:
+        //   https://us-central1-TU_PROYECTO.cloudfunctions.net/mpPoint
+        this._proxyUrl = 'https://us-central1-sistema-inventarios-1609c.cloudfunctions.net/mpPoint';
 
-        // Base URL del proxy CORS. La API de MP Point no acepta llamadas directas
-        // desde el navegador (CORS bloqueado). Usamos un proxy público para sandbox.
-        // En producción esto DEBE ser tu propio backend.
-        this._baseUrl = 'https://corsproxy.io/?';
-        this._mpUrl   = 'https://api.mercadopago.com';
-
-        // Estado del último intent creado
-        this._intentActual = null;
-        this._pollingTimer = null;
-
-        // Callback que se llama cuando cambia el estado del intent
+        this._intentActual   = null;
+        this._pollingTimer   = null;
         this._onEstadoCambia = null;
     }
 
     // ─── CONFIGURACIÓN ────────────────────────────────────────────────────
 
-    setAccessToken(token)    { this._accessToken = token; }
-    setOnEstadoCambia(fn)    { this._onEstadoCambia = fn; }
+    setProxyUrl(url)       { this._proxyUrl = url; }
+    setOnEstadoCambia(fn)  { this._onEstadoCambia = fn; }
 
     // ─── TERMINALES ───────────────────────────────────────────────────────
 
-    /**
-     * Obtiene la lista de terminales Point registradas en la cuenta MP.
-     * Útil para verificar que el Device ID es correcto.
-     */
     async obtenerTerminalesMP() {
         try {
-            const url = `${this._mpUrl}/point/integration-api/devices`;
-            const resp = await this._fetch(url);
+            const resp = await this._mp('GET', '/point/integration-api/devices');
             return resp?.devices || [];
         } catch (err) {
             console.error('[MP] Error al obtener terminales:', err);
@@ -49,27 +35,23 @@ export class MercadoPagoManager {
 
     /**
      * Crea un Payment Intent y lo envía a la terminal.
-     * La terminal mostrará automáticamente la pantalla de cobro.
      *
-     * @param {string} deviceId   - Device ID de la terminal (ej: "PAX_A920__SMARTPOS123456")
-     * @param {number} monto      - Monto en pesos MXN (ej: 150.50)
-     * @param {string} descripcion- Descripción visible en la terminal
-     * @returns {object} { success, intentId, estado, mensaje }
+     * @param {string} deviceId    - Device ID de la terminal
+     * @param {number} monto       - Monto en pesos MXN (ej: 150.50)
+     * @param {string} descripcion - Descripción visible en la terminal (máx 60 chars)
      */
     async crearPaymentIntent(deviceId, monto, descripcion = 'Venta') {
         if (!deviceId) return { success: false, mensaje: 'Device ID requerido' };
         if (!monto || monto <= 0) return { success: false, mensaje: 'Monto inválido' };
 
-        // MP Point requiere el monto en CENTAVOS (entero)
+        const deviceIdLimpio  = deviceId.trim();
         const montoEnCentavos = Math.round(monto * 100);
 
         const body = {
             amount:      montoEnCentavos,
-            description: descripcion.substring(0, 60), // máx 60 chars
+            description: descripcion.substring(0, 60),
             payment: {
-                installments:      1,
-                type:              'credit_card',  // acepta crédito y débito
-                installments_cost: 'seller'
+                installments: 1
             },
             additional_info: {
                 external_reference: `SAITECK_${Date.now()}`
@@ -77,15 +59,18 @@ export class MercadoPagoManager {
         };
 
         try {
-            const url  = `${this._mpUrl}/point/integration-api/devices/${deviceId}/payment-intents`;
-            const resp = await this._fetch(url, 'POST', body);
+            const resp = await this._mp(
+                'POST',
+                `/point/integration-api/devices/${encodeURIComponent(deviceIdLimpio)}/payment-intents`,
+                body
+            );
 
             if (resp?.id) {
                 this._intentActual = {
-                    id:       resp.id,
-                    deviceId,
+                    id:        resp.id,
+                    deviceId:  deviceIdLimpio,
                     monto,
-                    estado:   resp.state || 'OPEN',
+                    estado:    resp.state || 'OPEN',
                     createdAt: new Date().toISOString()
                 };
 
@@ -97,40 +82,25 @@ export class MercadoPagoManager {
                 };
             }
 
-            // Error de la API de MP
-            const mensajeError = this._parsearErrorMP(resp);
-            return { success: false, mensaje: mensajeError };
+            return { success: false, mensaje: this._parsearErrorMP(resp) };
 
         } catch (err) {
             console.error('[MP] Error al crear Payment Intent:', err);
-
-            // Manejo específico de errores CORS (en desarrollo sin backend)
-            if (err.message?.includes('CORS') || err.message?.includes('Failed to fetch')) {
-                return {
-                    success: false,
-                    mensaje: 'Error de conexión con Mercado Pago. Verifica tu conexión a internet.',
-                    esCORS: true
-                };
-            }
-
-            return {
-                success: false,
-                mensaje: `Error de conexión: ${err.message}`
-            };
+            return { success: false, mensaje: this._mensajeAmigable(err) };
         }
     }
 
     /**
-     * Consulta el estado actual de un Payment Intent.
+     * Consulta el estado de un Payment Intent.
      * Estados posibles: OPEN, ON_TERMINAL, PROCESSING, PROCESSED, CANCELED, ERROR
      */
     async consultarEstadoIntent(deviceId, intentId) {
         if (!intentId || !deviceId) return null;
-
         try {
-            const url  = `${this._mpUrl}/point/integration-api/devices/${deviceId}/payment-intents/${intentId}`;
-            const resp = await this._fetch(url);
-            return resp;
+            return await this._mp(
+                'GET',
+                `/point/integration-api/devices/${encodeURIComponent(deviceId.trim())}/payment-intents/${intentId}`
+            );
         } catch (err) {
             console.error('[MP] Error al consultar intent:', err);
             return null;
@@ -142,18 +112,19 @@ export class MercadoPagoManager {
      */
     async cancelarIntent(deviceId, intentId) {
         if (!intentId || !deviceId) return { success: false, mensaje: 'Datos incompletos' };
-
         try {
-            const url  = `${this._mpUrl}/point/integration-api/devices/${deviceId}/payment-intents/${intentId}`;
-            const resp = await this._fetch(url, 'DELETE');
+            const resp = await this._mp(
+                'DELETE',
+                `/point/integration-api/devices/${encodeURIComponent(deviceId.trim())}/payment-intents/${intentId}`
+            );
 
-            if (resp?.id || resp?.message === 'The payment intent has been cancelled') {
+            if (resp?.deleted || resp?.id || resp?.message?.includes('cancelled')) {
                 this._intentActual = null;
                 this.detenerPolling();
                 return { success: true, mensaje: 'Cobro cancelado en la terminal' };
             }
-
             return { success: false, mensaje: 'No se pudo cancelar el cobro' };
+
         } catch (err) {
             console.error('[MP] Error al cancelar intent:', err);
             return { success: false, mensaje: `Error: ${err.message}` };
@@ -162,11 +133,6 @@ export class MercadoPagoManager {
 
     // ─── POLLING AUTOMÁTICO ───────────────────────────────────────────────
 
-    /**
-     * Inicia polling para detectar cuando la terminal procesa el pago.
-     * Llama a this._onEstadoCambia(estado, resp) cuando cambia el estado.
-     * @param {number} intervaloMs - Intervalo entre consultas (default: 4s)
-     */
     iniciarPolling(deviceId, intentId, intervaloMs = 4000) {
         this.detenerPolling();
 
@@ -177,16 +143,14 @@ export class MercadoPagoManager {
             const estadoAnterior = this._intentActual?.estado;
             const estadoNuevo    = resp.state;
 
-            if (estadoNuevo !== estadoAnterior) {
+            if (estadoNuevo && estadoNuevo !== estadoAnterior) {
                 if (this._intentActual) this._intentActual.estado = estadoNuevo;
                 if (this._onEstadoCambia) this._onEstadoCambia(estadoNuevo, resp);
             }
 
-            // Detener polling en estados terminales
             if (['PROCESSED', 'CANCELED', 'ERROR'].includes(estadoNuevo)) {
                 this.detenerPolling();
             }
-
         }, intervaloMs);
     }
 
@@ -208,47 +172,53 @@ export class MercadoPagoManager {
 
     describirEstado(estado) {
         const estados = {
-            'OPEN':        { texto: 'Enviando a terminal...',       icono: '📡', color: '#718096' },
-            'ON_TERMINAL': { texto: 'Esperando pago en terminal',   icono: '💳', color: '#ed8936' },
-            'PROCESSING':  { texto: 'Procesando pago...',           icono: '⏳', color: '#667eea' },
-            'PROCESSED':   { texto: 'Pago exitoso',                 icono: '✅', color: '#48bb78' },
-            'CANCELED':    { texto: 'Cobro cancelado',              icono: '❌', color: '#f56565' },
-            'ERROR':       { texto: 'Error en el cobro',            icono: '⚠️', color: '#f56565' }
+            'OPEN':        { texto: 'Enviando a terminal...',     icono: '📡', color: '#718096' },
+            'ON_TERMINAL': { texto: 'Esperando pago en terminal', icono: '💳', color: '#ed8936' },
+            'PROCESSING':  { texto: 'Procesando pago...',         icono: '⏳', color: '#667eea' },
+            'PROCESSED':   { texto: 'Pago exitoso',               icono: '✅', color: '#48bb78' },
+            'CANCELED':    { texto: 'Cobro cancelado',            icono: '❌', color: '#f56565' },
+            'ERROR':       { texto: 'Error en el cobro',          icono: '⚠️', color: '#f56565' }
         };
         return estados[estado] || { texto: estado, icono: '❓', color: '#718096' };
     }
 
-    // ─── UTILIDADES INTERNAS ──────────────────────────────────────────────
+    // ─── PROXY INTERNO ────────────────────────────────────────────────────
 
-    async _fetch(url, method = 'GET', body = null) {
-        const options = {
-            method,
+    /**
+     * Envía una petición a la Cloud Function proxy.
+     * La función verifica el Firebase ID Token antes de llamar a MP,
+     * por lo que el Access Token de MP nunca sale del servidor.
+     *
+     * @param {string} method  - GET | POST | DELETE
+     * @param {string} path    - Path de la API de MP (ej: /point/integration-api/devices/...)
+     * @param {object} [body]  - Body para POST
+     */
+    async _mp(method, path, body = null) {
+        // Obtener el Firebase ID Token del usuario autenticado
+        const currentUser = window.auth?.currentUser;
+        if (!currentUser) throw new Error('Usuario no autenticado en Firebase');
+
+        const idToken = await currentUser.getIdToken();
+
+        const idempotencyKey = `SAITECK_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+
+        const resp = await fetch(this._proxyUrl, {
+            method:  'POST',
             headers: {
-                'Authorization': `Bearer ${this._accessToken}`,
-                'Content-Type':  'application/json',
-                'X-Idempotency-Key': `SAITECK_${Date.now()}_${Math.random().toString(36).slice(2)}`
-            }
-        };
+                'Content-Type':      'application/json',
+                'Authorization':     `Bearer ${idToken}`,
+                'X-Idempotency-Key': idempotencyKey
+            },
+            body: JSON.stringify({ method, path, body, idempotencyKey })
+        });
 
-        if (body) options.body = JSON.stringify(body);
-
-        // Intentar llamada directa primero (funciona en algunos entornos)
-        let resp;
-        try {
-            resp = await fetch(url, options);
-        } catch (_) {
-            // Fallback: usar proxy CORS
-            const proxiedUrl = `${this._baseUrl}${encodeURIComponent(url)}`;
-            resp = await fetch(proxiedUrl, options);
-        }
-
-        // 204 No Content (DELETE exitoso)
+        // 204 sin body
         if (resp.status === 204) return { deleted: true };
 
         const data = await resp.json().catch(() => ({}));
 
         if (!resp.ok) {
-            const err = new Error(data?.message || data?.error || `HTTP ${resp.status}`);
+            const err  = new Error(data?.message || data?.error || `HTTP ${resp.status}`);
             err.status = resp.status;
             err.data   = data;
             throw err;
@@ -257,25 +227,41 @@ export class MercadoPagoManager {
         return data;
     }
 
-    _parsearErrorMP(resp) {
-        if (!resp) return 'Error desconocido de Mercado Pago';
+    // ─── MENSAJES DE ERROR ────────────────────────────────────────────────
 
-        const cod = resp?.error || resp?.cause?.[0]?.code || '';
-        const msg = resp?.message || '';
+    _mensajeAmigable(err) {
+        const status = err.status;
+        const data   = err.data || {};
+        const msg    = err.message || '';
 
-        const mensajes = {
-            '4002':                      'El Device ID no existe o no está activo en tu cuenta de MP.',
-            '4003':                      'Ya hay un cobro activo en la terminal. Cancélalo primero.',
-            '4004':                      'La terminal no está disponible en este momento.',
-            'device_id_not_found':       'Terminal no encontrada. Verifica el Device ID.',
-            'payment_intent_in_process': 'Ya hay un cobro en proceso en la terminal.',
-            '400':                       `Solicitud inválida: ${msg}`,
-            '401':                       'Access Token inválido. Verifica tus credenciales de MP.',
-            '403':                       'Sin permisos. Verifica que el Access Token tenga permisos de Point.',
-            '404':                       'Recurso no encontrado en Mercado Pago.',
-            '500':                       'Error interno de Mercado Pago. Intenta de nuevo.'
+        if (msg.includes('Failed to fetch') || msg.includes('NetworkError')) {
+            return 'Sin conexión a internet o la Cloud Function no responde. Verifica tu red.';
+        }
+
+        const tabla = {
+            400: this._parsearErrorMP(data) || `Solicitud inválida: ${msg}`,
+            401: 'No autorizado. Vuelve a iniciar sesión.',
+            403: 'Sin permisos para usar la API de Point. Verifica tu cuenta de Mercado Pago.',
+            404: 'Terminal no encontrada. Verifica que el Device ID esté bien escrito y que la terminal esté activa en tu cuenta de MP.',
+            409: 'Ya hay un cobro activo en esa terminal. Cancélalo desde la terminal o espera a que finalice.',
+            422: `Datos inválidos: ${msg}`,
+            500: 'Error interno. Intenta de nuevo en unos momentos.'
         };
 
-        return mensajes[cod] || mensajes[String(resp.status)] || msg || 'Error de Mercado Pago';
+        return tabla[status] || `Error ${status || ''}: ${msg}`;
+    }
+
+    _parsearErrorMP(data) {
+        if (!data) return '';
+        const cod = data.error || data.cause?.[0]?.code || '';
+        const msg = data.message || '';
+        const tabla = {
+            '4002':                      'El Device ID no existe o no está activo en tu cuenta de MP.',
+            '4003':                      'Ya hay un cobro activo en esa terminal. Cancélalo primero.',
+            '4004':                      'La terminal no está disponible ahora. Verifica que esté encendida y conectada.',
+            'device_id_not_found':       'Terminal no encontrada. Verifica el Device ID.',
+            'payment_intent_in_process': 'Ya hay un cobro en proceso en esa terminal.'
+        };
+        return tabla[String(cod)] || msg || '';
     }
 }
