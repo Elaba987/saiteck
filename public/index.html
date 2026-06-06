@@ -12,6 +12,7 @@
     <link rel="apple-touch-icon" href="img/logo_saiteck.png">
     <link rel="stylesheet" href="css/styles.css">
     <link rel="stylesheet" href="css/styles_additions.css">
+    <link rel="stylesheet" href="css/styles_mp.css">
 </head>
 <body>
 
@@ -107,17 +108,16 @@
 
             <!-- ─── DASHBOARD ─── -->
             <section id="dashboard" class="section">
-
                 <div class="card">
                     <h3>📊 Panel de Control</h3>
                     <div id="statsGrid" class="stats-grid"></div>
-                </div>
 
-                <div class="dashboard-meta-card">
-                    <h3 style="color:#2d3748;margin-bottom:16px;font-size:18px;border-bottom:3px solid var(--color-primario);padding-bottom:10px;">
-                        🎯 Progreso de Meta Diaria
-                    </h3>
-                    <div id="dashboardMetaVentas"></div>
+                    <div style="margin-top:24px;padding-top:20px;border-top:2px solid #e2e8f0;">
+                        <h4 style="color:#2d3748;margin-bottom:14px;font-size:16px;font-weight:700;display:flex;align-items:center;gap:8px;">
+                            🎯 Progreso de Meta Diaria
+                        </h4>
+                        <div id="dashboardMetaVentas"></div>
+                    </div>
                 </div>
 
                 <div id="dashboardBotonInventario"></div>
@@ -284,11 +284,13 @@
 
                     <div id="listaVenta" style="margin-top:30px;"></div>
 
+                    <!-- ── Sección de cobro ── -->
                     <div style="margin-top:20px;padding:20px;background:#f7fafc;border-radius:8px;">
                         <h3>Total: $<span id="totalVenta">0.00</span></h3>
+
                         <div class="form-row" style="margin-top:15px;">
                             <div class="form-group">
-                                <label>Pago del Cliente</label>
+                                <label>Pago del Cliente (Efectivo)</label>
                                 <input type="number" step="0.01" id="pagoCliente" placeholder="0.00">
                             </div>
                             <div class="form-group">
@@ -297,9 +299,15 @@
                                        style="background:#e2e8f0;font-weight:bold;">
                             </div>
                         </div>
-                        <div style="display:flex;gap:10px;margin-top:10px;">
+
+                        <!-- Botones de pago -->
+                        <div class="pago-btns-row">
                             <button id="btnPagoExacto" class="btn btn-secondary">💵 Pago Exacto</button>
-                            <button id="btnFinalizarVenta" class="btn btn-primary">Finalizar Venta</button>
+                            <button id="btnFinalizarVenta" class="btn btn-primary">✅ Cobrar Efectivo</button>
+                            <button id="btnCobrarTarjeta" class="btn-tarjeta" title="Cobrar con Mercado Pago Point">
+                                <span class="mp-logo">💳</span>
+                                Cobrar con Tarjeta
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -473,7 +481,6 @@
             <section id="administracion" class="section hidden">
                 <div class="card">
                     <div id="adminPanelContenido">
-                        <!-- AdminPanelManager renderiza aquí -->
                         <div style="text-align:center;padding:60px 20px;color:#718096;">
                             <span style="font-size:48px;">🛡️</span>
                             <p style="margin-top:16px;font-size:16px;">Cargando panel de administración...</p>
@@ -523,6 +530,25 @@
                         <small style="color:#a0aec0;margin-top:8px;display:block;">
                             Ingresa 0 para desactivar la barra de meta.
                         </small>
+                    </div>
+
+                    <!-- ── TERMINALES MERCADO PAGO (solo administradores) ── -->
+                    <div id="seccionTerminales" class="config-section">
+                        <div class="terminales-section-header">
+                            <div>
+                                <h4 class="terminales-section-title">
+                                    <span style="background:linear-gradient(135deg,#009ee3,#0066cc);color:white;border-radius:8px;padding:5px 9px;font-size:16px;">💳</span>
+                                    Terminales Mercado Pago Point
+                                </h4>
+                                <p class="terminales-section-subtitle">
+                                    Administra tus terminales de pago con tarjeta. El Device ID lo encuentras en la app de Mercado Pago o en el panel de desarrolladores.
+                                </p>
+                            </div>
+                        </div>
+                        <!-- El JS inyecta aquí el listado + botón agregar -->
+                        <div id="seccionTerminalesContenido">
+                            <p style="color:#718096;font-size:14px;">Cargando terminales...</p>
+                        </div>
                     </div>
 
                     <!-- Gestión de Usuarios (solo administradores) -->
@@ -841,6 +867,85 @@
     </div>
 
     <!-- ═══════════════════════════════════════════════════════
+         MODAL — COBRAR CON TARJETA (Mercado Pago Point)
+    ═══════════════════════════════════════════════════════ -->
+    <div id="modalCobrarTarjeta" class="mp-modal-overlay hidden" style="display:none;">
+        <div class="mp-modal-card">
+
+            <!-- Encabezado fijo -->
+            <div class="mp-modal-header">
+                <div class="mp-modal-header-logo">💳</div>
+                <div class="mp-modal-header-title">
+                    <h3>Cobro con Tarjeta</h3>
+                    <p>Mercado Pago Point</p>
+                </div>
+                <button class="mp-modal-close" id="btnCerrarModalTarjeta" title="Cerrar">✕</button>
+            </div>
+
+            <!-- Contenido dinámico inyectado por JS (paso 1 y paso 2) -->
+            <div id="cobrarTarjetaContenido">
+                <!-- abrirModalCobrarTarjeta() inyecta aquí:
+                     #mpPaso1  — selección de terminal y monto
+                     #mpPaso2  — estado del intent (polling) -->
+            </div>
+
+        </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════
+         MODAL — REGISTRAR / EDITAR TERMINAL
+    ═══════════════════════════════════════════════════════ -->
+    <div id="modalTerminal" class="terminal-modal-overlay hidden" style="display:none;">
+        <div class="terminal-modal-card">
+
+            <div class="terminal-modal-header">
+                <h3 class="terminal-modal-title" id="tituloModalTerminal">
+                    <span style="background:linear-gradient(135deg,#009ee3,#0066cc);color:white;border-radius:8px;padding:4px 8px;font-size:18px;">🖥️</span>
+                    Registrar Terminal
+                </h3>
+                <button class="mp-modal-close" id="btnCerrarModalTerminal" title="Cerrar">✕</button>
+            </div>
+
+            <form id="formTerminal">
+                <input type="hidden" id="terminalId">
+
+                <div class="form-group">
+                    <label>Nombre de la Terminal *</label>
+                    <input type="text" id="terminalNombre" required
+                           placeholder="Ej: Caja Principal, Terminal 1…">
+                    <small style="color:#718096;margin-top:5px;display:block;">
+                        Nombre descriptivo para identificar la terminal en el sistema.
+                    </small>
+                </div>
+
+                <div class="form-group">
+                    <label>Device ID *</label>
+                    <input type="text" id="terminalDeviceId" required
+                           placeholder="Ej: PAX_A920__SMARTPOS123456"
+                           style="font-family:'Courier New',monospace;letter-spacing:0.5px;">
+                    <div class="mp-device-id-help">
+                        <span class="mp-device-id-help-icon">ℹ️</span>
+                        <span class="mp-device-id-help-text">
+                            Encuentra el Device ID en la app de Mercado Pago → Punto de venta → Tu terminal,
+                            o en el panel de desarrolladores en <strong>api.mercadopago.com/point/integration-api/devices</strong>.
+                        </span>
+                    </div>
+                </div>
+
+                <div style="display:flex;gap:10px;margin-top:24px;flex-wrap:wrap;">
+                    <button type="submit" class="btn-mp-add" style="padding:12px 24px;font-size:15px;">
+                        💾 Guardar Terminal
+                    </button>
+                    <button type="button" id="btnCancelarTerminal" class="btn btn-secondary">
+                        Cancelar
+                    </button>
+                </div>
+            </form>
+
+        </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════
          SCRIPTS
     ═══════════════════════════════════════════════════════ -->
     <script src="https://unpkg.com/@zxing/library@0.20.0/umd/index.min.js"></script>
@@ -849,5 +954,45 @@
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
     <script src="js/firebase-config.js"></script>
     <script type="module" src="js/app.js"></script>
+
+    <!-- Inicializar cierre de modales MP/Terminal desde HTML
+         (por si el usuario cierra antes de que el JS inyecte los listeners internos) -->
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // Cerrar modal cobrar tarjeta
+            document.getElementById('btnCerrarModalTarjeta')?.addEventListener('click', () => {
+                if (window.appInstance) {
+                    window.appInstance._cancelarCobroTarjeta?.();
+                } else {
+                    const m = document.getElementById('modalCobrarTarjeta');
+                    if (m) { m.classList.add('hidden'); m.style.display = 'none'; }
+                }
+            });
+            // Cerrar modal terminal
+            const cerrarTerminal = () => {
+                if (window.appInstance) {
+                    window.appInstance.cerrarModal?.('modalTerminal');
+                } else {
+                    const m = document.getElementById('modalTerminal');
+                    if (m) { m.classList.add('hidden'); m.style.display = 'none'; }
+                }
+            };
+            document.getElementById('btnCerrarModalTerminal')?.addEventListener('click', cerrarTerminal);
+            document.getElementById('btnCancelarTerminal')?.addEventListener('click', cerrarTerminal);
+
+            // Cerrar al hacer click fuera de las tarjetas de los modales MP
+            document.getElementById('modalCobrarTarjeta')?.addEventListener('click', (e) => {
+                if (e.target === document.getElementById('modalCobrarTarjeta')) {
+                    window.appInstance?._cancelarCobroTarjeta?.();
+                }
+            });
+            document.getElementById('modalTerminal')?.addEventListener('click', (e) => {
+                if (e.target === document.getElementById('modalTerminal')) {
+                    cerrarTerminal();
+                }
+            });
+        });
+    </script>
+
 </body>
 </html>

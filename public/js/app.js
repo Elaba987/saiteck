@@ -11,6 +11,8 @@ import { UsuariosManager }     from './modules/usuarios.js';
 import { EscanerManager }      from './modules/escaner.js';
 import { AuditoriaManager }    from './modules/auditoria.js';
 import { AdminPanelManager }   from './modules/adminPanel.js';
+import { TerminalesManager }   from './modules/terminales.js';
+import { MercadoPagoManager }  from './modules/mercadopago.js';
 
 class TiendaApp {
     constructor() {
@@ -28,9 +30,17 @@ class TiendaApp {
         this.usuariosManager      = new UsuariosManager();
         this.escanerManager       = new EscanerManager();
         this.auditoriaManager     = new AuditoriaManager();
-        this.adminPanelManager    = null; // se inicializa tras cargar usuarios
+        this.terminalesManager    = new TerminalesManager();
+        this.mercadoPagoManager   = new MercadoPagoManager();
+        this.adminPanelManager    = null;
+
         this.productoSeleccionado = null;
         this.datosInicializados   = false;
+
+        // Estado del flujo de cobro con tarjeta
+        this._pagoTarjetaActivo   = false;
+        this._terminalSeleccionada = null;
+
         this.init();
     }
 
@@ -51,10 +61,10 @@ class TiendaApp {
     }
 
     // ============================================================
-    // FORMULARIOS COLAPSABLES (Registrar Producto / Proveedor)
+    // FORMULARIOS COLAPSABLES
     // ============================================================
     inicializarFormulariosColapsables() {
-        this._bindCollapsible('headerRegistrarProducto', 'bodyRegistrarProducto');
+        this._bindCollapsible('headerRegistrarProducto',  'bodyRegistrarProducto');
         this._bindCollapsible('headerRegistrarProveedor', 'bodyRegistrarProveedor');
     }
 
@@ -62,19 +72,17 @@ class TiendaApp {
         const header = document.getElementById(headerId);
         const body   = document.getElementById(bodyId);
         if (!header || !body) return;
-
         const icon = header.querySelector('.collapsible-toggle-icon');
-
         header.addEventListener('click', () => {
             const isOpen = body.classList.contains('open');
             if (isOpen) {
                 body.classList.remove('open');
                 header.classList.remove('open');
-                if (icon) icon.classList.remove('open');
+                icon?.classList.remove('open');
             } else {
                 body.classList.add('open');
                 header.classList.add('open');
-                if (icon) icon.classList.add('open');
+                icon?.classList.add('open');
             }
         });
     }
@@ -88,16 +96,12 @@ class TiendaApp {
         const mainContent = document.querySelector('.main-content');
 
         if (menuToggle && sidebar) {
-            menuToggle.addEventListener('click', () => {
-                sidebar.classList.toggle('active');
+            menuToggle.addEventListener('click', () => sidebar.classList.toggle('active'));
+            mainContent?.addEventListener('click', () => {
+                if (window.innerWidth <= 768 && sidebar.classList.contains('active')) {
+                    sidebar.classList.remove('active');
+                }
             });
-            if (mainContent) {
-                mainContent.addEventListener('click', () => {
-                    if (window.innerWidth <= 768 && sidebar.classList.contains('active')) {
-                        sidebar.classList.remove('active');
-                    }
-                });
-            }
             sidebar.addEventListener('click', (e) => {
                 if (e.target.closest('.menu-item') && window.innerWidth <= 768) {
                     setTimeout(() => sidebar.classList.remove('active'), 300);
@@ -116,12 +120,11 @@ class TiendaApp {
             this.uiManager.mostrarCargando();
             await this.usuariosManager.inicializar();
 
-            // Inyectar auditoría en todos los managers que la usan
             this.productosManager.setAuditoriaManager(this.auditoriaManager);
             this.ventasManager.setAuditoriaManager(this.auditoriaManager);
             this.proveedoresManager.setAuditoriaManager(this.auditoriaManager);
+            this.terminalesManager.setAuditoriaManager(this.auditoriaManager);
 
-            // Inicializar AdminPanelManager ahora que ya tenemos usuarios
             this.adminPanelManager = new AdminPanelManager(
                 this.auditoriaManager,
                 this.usuariosManager
@@ -137,7 +140,8 @@ class TiendaApp {
             await Promise.all([
                 this.productosManager.cargarProductos(),
                 this.ventasManager.cargarVentas(),
-                this.proveedoresManager.cargarProveedores()
+                this.proveedoresManager.cargarProveedores(),
+                this.terminalesManager.cargarTerminales()
             ]);
 
             this.productosManager.iniciarEscucha(() => {
@@ -151,6 +155,9 @@ class TiendaApp {
             });
             this.ventasManager.iniciarEscucha(() => {
                 this.actualizarDashboard();
+            });
+            this.terminalesManager.iniciarEscucha(() => {
+                this._actualizarVistaTerminales();
             });
 
             this.actualizarDashboard();
@@ -168,7 +175,7 @@ class TiendaApp {
     }
 
     // ============================================================
-    // MODAL DE NIP
+    // MODAL NIP
     // ============================================================
     inicializarModalNIP() {
         const modal = document.getElementById('modalNIP');
@@ -184,7 +191,7 @@ class TiendaApp {
     }
 
     // ============================================================
-    // ESCÁNER DE CÓDIGO DE BARRAS
+    // ESCÁNER
     // ============================================================
     inicializarEscaner() {
         const btnVenta = document.getElementById('btnEscanerVenta');
@@ -218,9 +225,7 @@ class TiendaApp {
         }
 
         const btnCerrar = document.getElementById('btnCerrarEscaner');
-        if (btnCerrar) {
-            btnCerrar.addEventListener('click', () => this.escanerManager.cerrar());
-        }
+        if (btnCerrar) btnCerrar.addEventListener('click', () => this.escanerManager.cerrar());
 
         const overlay = document.getElementById('modalEscaner');
         if (overlay) {
@@ -231,7 +236,7 @@ class TiendaApp {
     }
 
     // ============================================================
-    // NIP — SOLICITAR AL SELECCIONAR PERFIL
+    // NIP — SELECCIONAR PERFIL
     // ============================================================
     async solicitarNIP(perfilId) {
         return new Promise((resolve) => {
@@ -357,12 +362,7 @@ class TiendaApp {
         if (!nipValido) return;
 
         this.usuariosManager.establecerUsuarioActual(perfil);
-
-        // Registrar inicio de sesión de perfil
-        this.auditoriaManager.registrar('SESION_INICIO', {
-            perfil: perfil.nombre,
-            rol:    perfil.rol
-        }, perfil);
+        this.auditoriaManager.registrar('SESION_INICIO', { perfil: perfil.nombre, rol: perfil.rol }, perfil);
 
         if (this.datosInicializados) {
             this.datosInicializados = false;
@@ -376,12 +376,7 @@ class TiendaApp {
     actualizarMenuSegunPermisos() {
         document.querySelectorAll('.menu-item').forEach(item => {
             const seccion = item.dataset.section;
-            // La sección de administración solo para admins
-            if (seccion === 'administracion') {
-                item.style.display = this.usuariosManager.esAdministrador() ? 'flex' : 'none';
-            } else {
-                item.style.display = this.usuariosManager.tienePermiso(seccion) ? 'flex' : 'none';
-            }
+            item.style.display = this.usuariosManager.tienePermiso(seccion) ? 'flex' : 'none';
         });
     }
 
@@ -392,7 +387,9 @@ class TiendaApp {
         const modales = [
             { id: 'modalEditarProducto',  cerrarId: 'cerrarModalEditarProducto' },
             { id: 'modalEditarProveedor', cerrarId: 'cerrarModalEditarProveedor' },
-            { id: 'modalSiguienteVisita', cerrarId: 'cerrarModalSiguienteVisita' }
+            { id: 'modalSiguienteVisita', cerrarId: 'cerrarModalSiguienteVisita' },
+            { id: 'modalTerminal',        cerrarId: 'cerrarModalTerminal' },
+            { id: 'modalCobrarTarjeta',   cerrarId: 'cerrarModalCobrarTarjeta' }
         ];
         modales.forEach(({ id, cerrarId }) => {
             const modal     = document.getElementById(id);
@@ -401,8 +398,8 @@ class TiendaApp {
             if (modal) modal.addEventListener('click', (e) => { if (e.target === modal) this.cerrarModal(id); });
         });
 
-        const btnCancelarVisita = document.getElementById('btnCancelarSiguienteVisita');
-        if (btnCancelarVisita) btnCancelarVisita.addEventListener('click', () => this.cerrarModal('modalSiguienteVisita'));
+        document.getElementById('btnCancelarSiguienteVisita')
+            ?.addEventListener('click', () => this.cerrarModal('modalSiguienteVisita'));
     }
 
     cerrarModal(modalId) {
@@ -429,6 +426,7 @@ class TiendaApp {
                 if (seccion === 'dashboard')      this.actualizarDashboard();
                 if (seccion === 'reportes')       this.mostrarOpcionesReporte();
                 if (seccion === 'administracion') this._activarAdminPanel();
+                if (seccion === 'configuracion')  this._actualizarVistaTerminales();
             }
         });
         document.getElementById('statsGrid').addEventListener('click', (e) => {
@@ -437,14 +435,10 @@ class TiendaApp {
         });
     }
 
-    // Activa el panel de administración / auditoría
     async _activarAdminPanel() {
-        if (!this.usuariosManager.esAdministrador()) return;
+        if (!this.usuariosManager.tienePermiso('administracion')) return;
         if (!this.adminPanelManager) {
-            this.adminPanelManager = new AdminPanelManager(
-                this.auditoriaManager,
-                this.usuariosManager
-            );
+            this.adminPanelManager = new AdminPanelManager(this.auditoriaManager, this.usuariosManager);
         }
         await this.adminPanelManager.activar();
     }
@@ -454,6 +448,7 @@ class TiendaApp {
         this.inicializarVentas();
         this.inicializarProveedores();
         this.inicializarReportes();
+        this.inicializarTerminales();
     }
 
     // ============================================================
@@ -465,12 +460,8 @@ class TiendaApp {
             this.registrarProducto();
         });
 
-        const chkGranel = document.getElementById('esGranel');
-        if (chkGranel) chkGranel.addEventListener('change', () => this._toggleCamposGranel());
-
-        const chkEditGranel = document.getElementById('editEsGranel');
-        if (chkEditGranel) chkEditGranel.addEventListener('change', () => this._toggleCamposEditarGranel());
-
+        document.getElementById('esGranel')?.addEventListener('change', () => this._toggleCamposGranel());
+        document.getElementById('editEsGranel')?.addEventListener('change', () => this._toggleCamposEditarGranel());
         document.getElementById('buscarProducto').addEventListener('input', () => this.actualizarVistaProductos());
         document.getElementById('ordenarStock').addEventListener('change',  () => this.actualizarVistaProductos());
         document.getElementById('btnDescargarAlmacen').addEventListener('click', () => this.productosManager.descargarArchivoAlmacen());
@@ -560,14 +551,12 @@ class TiendaApp {
         }
         const producto = this.productosManager.obtenerPorId(id);
         if (!producto) return;
-
         document.getElementById('editProductoId').value   = producto.id;
         document.getElementById('editClave').value        = producto.clave;
         document.getElementById('editNombre').value       = producto.nombre;
         document.getElementById('editPrecioCompra').value = producto.precioCompra;
         document.getElementById('editPrecioVenta').value  = producto.precioVenta;
         document.getElementById('editStock').value        = producto.stock;
-
         const chkEditGranel = document.getElementById('editEsGranel');
         if (chkEditGranel) {
             chkEditGranel.checked = producto.esGranel || false;
@@ -640,6 +629,9 @@ class TiendaApp {
         document.getElementById('pagoCliente').addEventListener('input',       () => this.calcularCambio());
         document.getElementById('btnPagoExacto').addEventListener('click',     () => this.establecerPagoExacto());
         document.getElementById('btnFinalizarVenta').addEventListener('click', () => this.finalizarVenta());
+
+        // Botón cobrar con tarjeta
+        document.getElementById('btnCobrarTarjeta')?.addEventListener('click', () => this.abrirModalCobrarTarjeta());
 
         this._inicializarGranelListeners();
     }
@@ -764,10 +756,8 @@ class TiendaApp {
         const cantidadGroup = document.getElementById('cantidadVentaGroup');
         if (grupoGranel)   grupoGranel.style.display = 'block';
         if (cantidadGroup) cantidadGroup.style.display = 'none';
-
-        const granelPrecio = document.getElementById('granelPrecio');
         const granelGramos = document.getElementById('granelGramos');
-        if (granelPrecio) granelPrecio.value = '';
+        document.getElementById('granelPrecio').value = '';
         if (granelGramos) { granelGramos.value = ''; granelGramos.focus(); }
     }
 
@@ -793,7 +783,6 @@ class TiendaApp {
             const precioKilo   = this.productoSeleccionado.precioVenta;
             const gramos       = gramosInput > 0 ? gramosInput : (precioInput / precioKilo) * 1000;
             const precio       = precioInput > 0 ? precioInput : (gramos / 1000) * precioKilo;
-
             const kgEnCarrito  = this.ventasManager.obtenerStockEnCarrito(this.productoSeleccionado.clave) / 1000;
             const kgDisponible = this.productoSeleccionado.stock - kgEnCarrito;
 
@@ -823,7 +812,6 @@ class TiendaApp {
         this.productoSeleccionado = null;
         this._ocultarGranel();
         this.actualizarVistaVentaActual();
-
         setTimeout(() => { document.getElementById('buscarClaveVenta')?.focus(); }, 50);
     }
 
@@ -839,9 +827,8 @@ class TiendaApp {
     modificarCantidadCarrito(index, nuevaCantidad) {
         const item = this.ventasManager.obtenerVentaActual()[index];
         if (!item) return;
-        const stockDisponible = item.producto.stock;
-        if (nuevaCantidad > stockDisponible) {
-            this.uiManager.alerta(`Stock insuficiente. Máximo: ${stockDisponible}`);
+        if (nuevaCantidad > item.producto.stock) {
+            this.uiManager.alerta(`Stock insuficiente. Máximo: ${item.producto.stock}`);
             return;
         }
         const cambio = nuevaCantidad - item.cantidad;
@@ -904,28 +891,44 @@ class TiendaApp {
         this.calcularCambio();
     }
 
-    async finalizarVenta() {
+    async finalizarVenta(opcionesPago = {}) {
         const items = this.ventasManager.obtenerVentaActual();
         if (items.length === 0) { this.uiManager.alerta('No hay productos en la venta'); return; }
 
-        const total = this.ventasManager.calcularTotal();
-        const pago  = parseFloat(document.getElementById('pagoCliente').value) || 0;
-        if (pago < total) { this.uiManager.alerta('El pago es insuficiente'); return; }
+        const total      = this.ventasManager.calcularTotal();
+        const metodoPago = opcionesPago.metodoPago || 'efectivo';
 
-        const resultado = await this.ventasManager.finalizarVenta();
+        if (metodoPago === 'efectivo') {
+            const pago = parseFloat(document.getElementById('pagoCliente').value) || 0;
+            if (pago < total) { this.uiManager.alerta('El pago es insuficiente'); return; }
+            opcionesPago.pago   = pago;
+            opcionesPago.cambio = pago - total;
+        }
+
+        const resultado = await this.ventasManager.finalizarVenta(opcionesPago);
         if (!resultado.success) { this.uiManager.alerta(resultado.message); return; }
 
-        resultado.venta.pago   = pago;
-        resultado.venta.cambio = pago - total;
+        if (metodoPago === 'efectivo') {
+            resultado.venta.pago   = opcionesPago.pago;
+            resultado.venta.cambio = opcionesPago.cambio;
+        } else {
+            resultado.venta.pago   = total;
+            resultado.venta.cambio = 0;
+        }
 
         for (const item of resultado.venta.items) {
             const cantidadReducir = item.esGranel ? item.gramos : item.cantidad;
             await this.productosManager.reducirStock(item.producto.clave, cantidadReducir);
         }
 
-        const usuarioNombre = resultado.venta.usuario?.nombre || 'Sistema';
+        const usuarioNombre  = resultado.venta.usuario?.nombre || 'Sistema';
+        const metodoPagoText = metodoPago === 'tarjeta'
+            ? `Tarjeta — ${opcionesPago.infoTarjeta?.terminalNombre || 'terminal'}`
+            : 'Efectivo';
+
         this.uiManager.alerta(
-            `Venta realizada exitosamente.\nAtendido por: ${usuarioNombre}\nTotal: $${total.toFixed(2)}\nPago: $${pago.toFixed(2)}\nCambio: $${resultado.venta.cambio.toFixed(2)}`
+            `✅ Venta realizada exitosamente.\nAtendido por: ${usuarioNombre}\nMétodo: ${metodoPagoText}\nTotal: $${total.toFixed(2)}`
+            + (metodoPago === 'efectivo' ? `\nPago: $${opcionesPago.pago.toFixed(2)}\nCambio: $${opcionesPago.cambio.toFixed(2)}` : '')
         );
 
         if (this.uiManager.confirmar('¿Descargar ticket de venta?')) {
@@ -936,6 +939,246 @@ class TiendaApp {
         document.getElementById('cambioVenta').value = '';
         this.actualizarVistaVentaActual();
         setTimeout(() => { document.getElementById('buscarClaveVenta')?.focus(); }, 50);
+    }
+
+    // ============================================================
+    // COBRO CON TARJETA — MERCADO PAGO
+    // ============================================================
+
+    abrirModalCobrarTarjeta() {
+        const items = this.ventasManager.obtenerVentaActual();
+        if (items.length === 0) {
+            this.uiManager.alerta('Agrega productos a la venta antes de cobrar con tarjeta');
+            return;
+        }
+
+        const terminales = this.terminalesManager.obtenerActivas();
+        if (terminales.length === 0) {
+            this.uiManager.alerta('No hay terminales registradas. Ve a Configuración → Terminales para agregar una.');
+            return;
+        }
+
+        const total        = this.ventasManager.calcularTotal();
+        const contenedor   = document.getElementById('cobrarTarjetaContenido');
+        if (!contenedor) return;
+
+        // Limpiar estado anterior
+        this.mercadoPagoManager.limpiarIntentActual();
+        this._pagoTarjetaActivo    = false;
+        this._terminalSeleccionada = null;
+
+        contenedor.innerHTML = `
+            <!-- Paso 1: Selección de terminal -->
+            <div id="mpPaso1">
+                <p style="color:#4a5568;margin-bottom:16px;">
+                    Total a cobrar: <strong style="font-size:22px;color:var(--color-primario);">$${total.toFixed(2)}</strong>
+                </p>
+                <div class="form-group">
+                    <label>Seleccionar terminal</label>
+                    <select id="mpSelectTerminal" style="font-size:16px;">
+                        <option value="">-- Elige una terminal --</option>
+                        ${terminales.map(t => `
+                            <option value="${t.id}" data-device="${t.deviceId}" data-nombre="${t.nombre}">
+                                ${t.nombre} (${t.deviceId})
+                            </option>
+                        `).join('')}
+                    </select>
+                </div>
+                <div style="display:flex;gap:10px;margin-top:20px;">
+                    <button id="btnMPEnviar" class="btn btn-primary">
+                        💳 Enviar cobro a terminal
+                    </button>
+                    <button id="btnMPCancelarPaso1" class="btn btn-secondary">
+                        Cancelar
+                    </button>
+                </div>
+            </div>
+
+            <!-- Paso 2: Esperando pago (oculto inicialmente) -->
+            <div id="mpPaso2" class="hidden">
+                <div id="mpEstadoContenedor" style="text-align:center;padding:20px 0;">
+                    <div style="font-size:48px;margin-bottom:12px;" id="mpEstadoIcono">📡</div>
+                    <p style="font-size:18px;font-weight:700;color:#2d3748;" id="mpEstadoTexto">
+                        Enviando a terminal...
+                    </p>
+                    <p style="font-size:13px;color:#718096;margin-top:8px;" id="mpEstadoSub"></p>
+                    <div id="mpProgressBar" style="
+                        height:4px;border-radius:2px;background:#e2e8f0;margin:20px auto;max-width:300px;overflow:hidden;">
+                        <div id="mpProgressFill" style="
+                            height:100%;width:30%;background:var(--color-primario);
+                            border-radius:2px;animation:mpSlide 1.2s ease-in-out infinite;"></div>
+                    </div>
+                </div>
+                <div style="display:flex;gap:10px;justify-content:center;margin-top:10px;">
+                    <button id="btnMPConfirmar" class="btn btn-success hidden">
+                        ✅ Confirmar pago recibido
+                    </button>
+                    <button id="btnMPCancelarIntent" class="btn btn-danger">
+                        ❌ Cancelar cobro
+                    </button>
+                </div>
+            </div>
+        `;
+
+        // Eventos del modal
+        document.getElementById('btnMPEnviar')?.addEventListener('click', () => this._enviarCobroATerminal());
+        document.getElementById('btnMPCancelarPaso1')?.addEventListener('click', () => this.cerrarModal('modalCobrarTarjeta'));
+        document.getElementById('btnMPCancelarIntent')?.addEventListener('click', () => this._cancelarCobroTarjeta());
+        document.getElementById('btnMPConfirmar')?.addEventListener('click', () => this._confirmarPagoTarjeta());
+
+        this.abrirModal('modalCobrarTarjeta');
+    }
+
+    async _enviarCobroATerminal() {
+        const select   = document.getElementById('mpSelectTerminal');
+        const option   = select?.selectedOptions[0];
+        const termId   = select?.value;
+        const deviceId = option?.dataset.device;
+        const nombre   = option?.dataset.nombre;
+
+        if (!termId || !deviceId) {
+            this.uiManager.alerta('Selecciona una terminal');
+            return;
+        }
+
+        this._terminalSeleccionada = { id: termId, deviceId, nombre };
+
+        const total       = this.ventasManager.calcularTotal();
+        const items       = this.ventasManager.obtenerVentaActual();
+        const descripcion = items.length === 1
+            ? items[0].producto.nombre
+            : `Venta de ${items.length} productos`;
+
+        // Mostrar paso 2
+        document.getElementById('mpPaso1').classList.add('hidden');
+        document.getElementById('mpPaso2').classList.remove('hidden');
+        this._actualizarEstadoMP('OPEN');
+
+        const btnEnviar = document.getElementById('btnMPEnviar');
+        if (btnEnviar) btnEnviar.disabled = true;
+
+        const resultado = await this.mercadoPagoManager.crearPaymentIntent(deviceId, total, descripcion);
+
+        if (!resultado.success) {
+            // Volver a paso 1 con error
+            document.getElementById('mpPaso2').classList.add('hidden');
+            document.getElementById('mpPaso1').classList.remove('hidden');
+            if (btnEnviar) btnEnviar.disabled = false;
+
+            this.uiManager.alerta(`❌ No se pudo enviar el cobro:\n${resultado.mensaje}`);
+
+            if (resultado.esCORS) {
+                console.warn('[MP] CORS error — en producción usa un backend propio como proxy.');
+            }
+            return;
+        }
+
+        this._pagoTarjetaActivo = true;
+
+        // Auditoría
+        this.auditoriaManager.registrar('PAGO_TARJETA_INICIADO', {
+            terminal: nombre,
+            deviceId,
+            intentId: resultado.intentId,
+            monto:    `$${total.toFixed(2)}`
+        });
+
+        // Polling para detectar cambios de estado automáticamente
+        this.mercadoPagoManager.setOnEstadoCambia((estado) => {
+            this._actualizarEstadoMP(estado);
+        });
+        this.mercadoPagoManager.iniciarPolling(deviceId, resultado.intentId);
+    }
+
+    _actualizarEstadoMP(estado) {
+        const info = this.mercadoPagoManager.describirEstado(estado);
+
+        const iconoEl = document.getElementById('mpEstadoIcono');
+        const textoEl = document.getElementById('mpEstadoTexto');
+        const subEl   = document.getElementById('mpEstadoSub');
+        const barEl   = document.getElementById('mpProgressBar');
+        const btnConf = document.getElementById('btnMPConfirmar');
+
+        if (iconoEl) iconoEl.textContent = info.icono;
+        if (textoEl) { textoEl.textContent = info.texto; textoEl.style.color = info.color; }
+
+        const subs = {
+            'OPEN':        'La solicitud fue enviada. La terminal debería mostrar la pantalla de cobro.',
+            'ON_TERMINAL': 'Pide al cliente que acerque o inserte su tarjeta en la terminal.',
+            'PROCESSING':  'El pago está siendo procesado por la red bancaria...',
+            'PROCESSED':   'El pago fue aprobado. Confirma para registrar la venta.',
+            'CANCELED':    'El cobro fue cancelado en la terminal.',
+            'ERROR':       'Ocurrió un error. Intenta nuevamente.'
+        };
+        if (subEl) subEl.textContent = subs[estado] || '';
+
+        // Mostrar botón de confirmar cuando el estado es PROCESSED
+        if (btnConf) {
+            if (estado === 'PROCESSED') {
+                btnConf.classList.remove('hidden');
+                if (barEl) barEl.style.display = 'none';
+            } else {
+                btnConf.classList.add('hidden');
+            }
+        }
+
+        // Ocultar barra de progreso en estados terminales
+        if (['PROCESSED', 'CANCELED', 'ERROR'].includes(estado)) {
+            if (barEl) barEl.style.display = 'none';
+        }
+    }
+
+    async _cancelarCobroTarjeta() {
+        if (!this._pagoTarjetaActivo) {
+            this.cerrarModal('modalCobrarTarjeta');
+            return;
+        }
+
+        const intent = this.mercadoPagoManager.obtenerIntentActual();
+        if (intent) {
+            const resultado = await this.mercadoPagoManager.cancelarIntent(intent.deviceId, intent.id);
+            this.auditoriaManager.registrar('PAGO_TARJETA_CANCELADO', {
+                terminal: this._terminalSeleccionada?.nombre || '-',
+                intentId: intent.id,
+                monto:    `$${intent.monto?.toFixed(2) || '0.00'}`
+            });
+            if (!resultado.success) {
+                this.uiManager.alerta(`Nota: ${resultado.mensaje}`);
+            }
+        }
+
+        this.mercadoPagoManager.limpiarIntentActual();
+        this._pagoTarjetaActivo    = false;
+        this._terminalSeleccionada = null;
+        this.cerrarModal('modalCobrarTarjeta');
+    }
+
+    async _confirmarPagoTarjeta() {
+        if (!this._terminalSeleccionada) return;
+
+        const total  = this.ventasManager.calcularTotal();
+        const intent = this.mercadoPagoManager.obtenerIntentActual();
+
+        this.auditoriaManager.registrar('PAGO_TARJETA_CONFIRMADO', {
+            terminal: this._terminalSeleccionada.nombre,
+            intentId: intent?.id || '-',
+            monto:    `$${total.toFixed(2)}`
+        });
+
+        this.mercadoPagoManager.limpiarIntentActual();
+        this._pagoTarjetaActivo = false;
+        this.cerrarModal('modalCobrarTarjeta');
+
+        await this.finalizarVenta({
+            metodoPago: 'tarjeta',
+            infoTarjeta: {
+                terminalNombre: this._terminalSeleccionada.nombre,
+                deviceId:       this._terminalSeleccionada.deviceId,
+                intentId:       intent?.id || ''
+            }
+        });
+
+        this._terminalSeleccionada = null;
     }
 
     // ============================================================
@@ -996,9 +1239,9 @@ class TiendaApp {
         }
         const tipoReparto = document.getElementById('tipoReparto').value;
         const proveedor   = {
-            nombre:    document.getElementById('nombreProveedor').value,
-            telefono:  document.getElementById('telefonoProveedor').value,
-            email:     document.getElementById('emailProveedor').value,
+            nombre:   document.getElementById('nombreProveedor').value,
+            telefono: document.getElementById('telefonoProveedor').value,
+            email:    document.getElementById('emailProveedor').value,
             tipoReparto
         };
 
@@ -1036,7 +1279,6 @@ class TiendaApp {
     async marcarVisita(id) {
         const proveedor = this.proveedoresManager.obtenerPorId(id);
         if (!proveedor) { this.uiManager.alerta('Error: Proveedor no encontrado'); return; }
-
         if (this.uiManager.confirmar(`¿Marcar visita de "${proveedor.nombre}" como realizada?`)) {
             const resultado = await this.proveedoresManager.marcarVisitaRealizada(id);
             if (resultado.success) {
@@ -1094,9 +1336,9 @@ class TiendaApp {
         const proveedorId = document.getElementById('editProveedorId').value;
         const tipoReparto = document.getElementById('editTipoRepartoProveedor').value;
         const datos = {
-            nombre:    document.getElementById('editNombreProveedor').value,
-            telefono:  document.getElementById('editTelefonoProveedor').value,
-            email:     document.getElementById('editEmailProveedor').value,
+            nombre:   document.getElementById('editNombreProveedor').value,
+            telefono: document.getElementById('editTelefonoProveedor').value,
+            email:    document.getElementById('editEmailProveedor').value,
             tipoReparto
         };
         if (tipoReparto === 'constante') {
@@ -1137,7 +1379,7 @@ class TiendaApp {
     // REPORTES
     // ============================================================
     inicializarReportes() {
-        document.getElementById('tipoReporte').addEventListener('change',      () => this.mostrarOpcionesReporte());
+        document.getElementById('tipoReporte').addEventListener('change', () => this.mostrarOpcionesReporte());
         document.getElementById('btnGenerarReporte').addEventListener('click', () => this.generarReporte());
     }
 
@@ -1276,6 +1518,143 @@ class TiendaApp {
     }
 
     // ============================================================
+    // TERMINALES MERCADO PAGO — GESTIÓN
+    // ============================================================
+    inicializarTerminales() {
+        // El botón de crear terminal está en configuración, se bindea en
+        // _actualizarVistaTerminales() porque el HTML se renderiza dinámicamente
+    }
+
+    _actualizarVistaTerminales() {
+        const contenedor = document.getElementById('seccionTerminalesContenido');
+        if (!contenedor) return;
+
+        // Solo administradores pueden gestionar terminales
+        if (!this.usuariosManager.esAdministrador()) {
+            contenedor.innerHTML = '<p style="color:#718096;font-size:14px;">Solo el administrador puede gestionar las terminales.</p>';
+            return;
+        }
+
+        const terminales = this.terminalesManager.obtenerTodas();
+
+        contenedor.innerHTML = `
+            <button id="btnAgregarTerminal" class="btn btn-primary" style="margin-bottom:20px;">
+                ➕ Registrar Terminal
+            </button>
+            ${terminales.length === 0 ? `
+                <div style="text-align:center;padding:30px;color:#718096;background:#f7fafc;border-radius:10px;">
+                    <p style="font-size:32px;">🖥️</p>
+                    <p style="margin-top:8px;">No hay terminales registradas.</p>
+                    <p style="font-size:13px;margin-top:5px;">
+                        Encuentra el Device ID de tu terminal Point Smart en la app de Mercado Pago
+                        o en el panel de desarrolladores.
+                    </p>
+                </div>
+            ` : terminales.map(t => `
+                <div style="
+                    background:white;border:2px solid ${t.activa ? '#e2e8f0' : '#fed7d7'};
+                    border-radius:12px;padding:18px 20px;margin-bottom:12px;
+                    display:flex;align-items:center;justify-content:space-between;
+                    flex-wrap:wrap;gap:12px;transition:border-color .2s;">
+                    <div>
+                        <div style="display:flex;align-items:center;gap:10px;">
+                            <span style="font-size:24px;">🖥️</span>
+                            <div>
+                                <strong style="font-size:16px;color:#2d3748;">${t.nombre}</strong>
+                                <span style="
+                                    display:inline-block;margin-left:8px;padding:2px 8px;
+                                    border-radius:10px;font-size:11px;font-weight:700;
+                                    background:${t.activa ? '#edf7ed' : '#fee2e2'};
+                                    color:${t.activa ? '#276749' : '#c53030'};">
+                                    ${t.activa ? '● Activa' : '● Inactiva'}
+                                </span>
+                            </div>
+                        </div>
+                        <p style="font-size:12px;color:#718096;margin-top:6px;font-family:monospace;">
+                            Device ID: ${t.deviceId}
+                        </p>
+                    </div>
+                    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                        <button class="btn btn-primary btn-sm"  data-accion="editar-terminal"   data-id="${t.id}">✏️ Editar</button>
+                        <button class="btn btn-secondary btn-sm" data-accion="toggle-terminal"  data-id="${t.id}">
+                            ${t.activa ? '⏸ Desactivar' : '▶ Activar'}
+                        </button>
+                        <button class="btn btn-danger btn-sm"   data-accion="eliminar-terminal" data-id="${t.id}">🗑️ Eliminar</button>
+                    </div>
+                </div>
+            `).join('')}
+        `;
+
+        document.getElementById('btnAgregarTerminal')?.addEventListener('click', () => this.abrirModalTerminal());
+
+        contenedor.querySelectorAll('button[data-accion]').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                const { accion, id } = btn.dataset;
+                if (accion === 'editar-terminal')   this.abrirModalTerminal(id);
+                if (accion === 'toggle-terminal')   await this._toggleTerminal(id);
+                if (accion === 'eliminar-terminal') await this._eliminarTerminal(id);
+            });
+        });
+    }
+
+    abrirModalTerminal(id = null) {
+        const terminal  = id ? this.terminalesManager.obtenerPorId(id) : null;
+        const titulo    = document.getElementById('tituloModalTerminal');
+        const form      = document.getElementById('formTerminal');
+
+        if (!form) return;
+        form.reset();
+        document.getElementById('terminalId').value = id || '';
+
+        if (titulo) titulo.textContent = terminal ? 'Editar Terminal' : 'Registrar Terminal';
+        if (terminal) {
+            document.getElementById('terminalNombre').value   = terminal.nombre;
+            document.getElementById('terminalDeviceId').value = terminal.deviceId;
+        }
+
+        this.abrirModal('modalTerminal');
+    }
+
+    async _guardarTerminal() {
+        const id       = document.getElementById('terminalId').value;
+        const nombre   = document.getElementById('terminalNombre').value;
+        const deviceId = document.getElementById('terminalDeviceId').value;
+
+        const datos     = { nombre, deviceId };
+        const resultado = id
+            ? await this.terminalesManager.actualizar(id, datos)
+            : await this.terminalesManager.agregar(datos);
+
+        if (resultado.success) {
+            this.cerrarModal('modalTerminal');
+            this._actualizarVistaTerminales();
+            this.uiManager.alerta(resultado.message);
+        } else {
+            this.uiManager.alerta(resultado.message);
+        }
+    }
+
+    async _toggleTerminal(id) {
+        const resultado = await this.terminalesManager.toggleActiva(id);
+        if (resultado.success) {
+            this._actualizarVistaTerminales();
+        } else {
+            this.uiManager.alerta(resultado.message);
+        }
+    }
+
+    async _eliminarTerminal(id) {
+        if (!this.uiManager.confirmar('¿Eliminar esta terminal? Esta acción no se puede deshacer.')) return;
+        const resultado = await this.terminalesManager.eliminar(id);
+        if (resultado.success) {
+            this._actualizarVistaTerminales();
+            this.uiManager.alerta('Terminal eliminada');
+        } else {
+            this.uiManager.alerta(resultado.message);
+        }
+    }
+
+    // ============================================================
     // CONFIGURACIÓN — INFO DE USUARIO Y PLAN
     // ============================================================
     actualizarInfoUsuarioEnConfiguracion() {
@@ -1332,10 +1711,23 @@ class TiendaApp {
                 seccionGestion.classList.add('hidden');
             }
         }
+
+        // Renderizar sección de terminales
+        this._actualizarVistaTerminales();
+
+        // Bindear el form de terminal
+        const formTerminal = document.getElementById('formTerminal');
+        if (formTerminal && !formTerminal.dataset.bound) {
+            formTerminal.dataset.bound = 'true';
+            formTerminal.addEventListener('submit', (e) => {
+                e.preventDefault();
+                this._guardarTerminal();
+            });
+        }
     }
 
     // ============================================================
-    // GESTIÓN DE USUARIOS — INICIALIZACIÓN
+    // GESTIÓN DE USUARIOS
     // ============================================================
     inicializarGestionUsuarios() {
         const btnChangeProfile = document.getElementById('btnChangeProfile');
@@ -1370,15 +1762,12 @@ class TiendaApp {
 
     async cambiarPerfil() {
         const usuarioSaliente = this.usuariosManager.obtenerUsuarioActual();
-
-        // Registrar cierre de sesión antes de limpiar
         if (usuarioSaliente) {
             await this.auditoriaManager.registrar('SESION_CIERRE', {
                 perfil: usuarioSaliente.nombre,
                 rol:    usuarioSaliente.rol
             }, usuarioSaliente);
         }
-
         this.ventasManager.ventaActual = [];
         this.actualizarVistaVentaActual();
         this.usuariosManager.cerrarSesionPerfil();
@@ -1386,12 +1775,7 @@ class TiendaApp {
         window.mostrarSeleccionPerfil();
     }
 
-    // ============================================================
-    // MODAL CREAR / EDITAR USUARIO
-    // ============================================================
-    cerrarModalUsuario() {
-        this.cerrarModal('modalUsuario');
-    }
+    cerrarModalUsuario()  { this.cerrarModal('modalUsuario'); }
 
     mostrarModalUsuario(usuarioId = null) {
         const modal  = document.getElementById('modalUsuario');
@@ -1421,16 +1805,13 @@ class TiendaApp {
         if (usuarioId) {
             const usuario = this.usuariosManager.obtenerPorId(usuarioId);
             if (!usuario) return;
-
             titulo.textContent = 'Editar Usuario';
             document.getElementById('usuarioId').value     = usuario.id;
             document.getElementById('nombreUsuario').value = usuario.nombre;
             document.getElementById('rolUsuario').value    = usuario.rol;
-
             inputNIP.value = usuario.nip || '0000';
             displayNIP.textContent = '••••';
             displayNIP.classList.add('hidden-nip');
-
             if (usuario.rol === 'empleado' && usuario.permisos) {
                 usuario.permisos.forEach(permiso => {
                     const cb = document.querySelector(`input[name="permisos"][value="${permiso}"]`);
@@ -1475,20 +1856,6 @@ class TiendaApp {
         modal.style.display = 'flex';
     }
 
-    _configurarOpcionesAcceso() {
-        const cuentaEsTotal   = this.usuariosManager.cuentaTieneAccesoTotal();
-        const radioTotal      = document.getElementById('accesoTotal');
-        const opcionTotal     = document.getElementById('opcionTotal');
-        const avisoPlanBasico = document.getElementById('avisoPlanBasico');
-        const bloqueadoTexto  = document.getElementById('totalBloqueadoTexto');
-
-        if (radioTotal)      radioTotal.disabled          = !cuentaEsTotal;
-        if (opcionTotal)     opcionTotal.style.opacity    = cuentaEsTotal ? '1' : '0.5';
-        if (opcionTotal)     opcionTotal.style.cursor     = cuentaEsTotal ? 'pointer' : 'not-allowed';
-        if (avisoPlanBasico) avisoPlanBasico.style.display = cuentaEsTotal ? 'none' : 'block';
-        if (bloqueadoTexto)  bloqueadoTexto.style.display  = cuentaEsTotal ? 'none' : 'inline';
-    }
-
     cargarPermisosEnModal() {
         const contenedor        = document.getElementById('listadoPermisos');
         if (!contenedor) return;
@@ -1521,9 +1888,7 @@ class TiendaApp {
     toggleSeccionPermisos() {
         const rol             = document.getElementById('rolUsuario').value;
         const seccionPermisos = document.getElementById('seccionPermisos');
-        if (seccionPermisos) {
-            seccionPermisos.style.display = rol === 'empleado' ? 'block' : 'none';
-        }
+        if (seccionPermisos) seccionPermisos.style.display = rol === 'empleado' ? 'block' : 'none';
     }
 
     async guardarUsuario() {
@@ -1551,17 +1916,10 @@ class TiendaApp {
             : await this.usuariosManager.crearUsuario(datos);
 
         if (resultado.success) {
-            // Auditoría de usuario
             if (usuarioId) {
-                this.auditoriaManager.registrar('USUARIO_EDITAR', {
-                    nombre, rol,
-                    permisos: permisos.length > 0 ? `${permisos.length} permiso(s)` : 'Acceso total'
-                });
+                this.auditoriaManager.registrar('USUARIO_EDITAR', { nombre, rol, permisos: permisos.length > 0 ? `${permisos.length} permiso(s)` : 'Acceso total' });
             } else {
-                this.auditoriaManager.registrar('USUARIO_CREAR', {
-                    nombre, rol,
-                    permisos: permisos.length > 0 ? `${permisos.length} permiso(s)` : 'Acceso total'
-                });
+                this.auditoriaManager.registrar('USUARIO_CREAR', { nombre, rol, permisos: permisos.length > 0 ? `${permisos.length} permiso(s)` : 'Acceso total' });
             }
             this.cerrarModalUsuario();
             this.cargarListaUsuarios();
@@ -1591,10 +1949,9 @@ class TiendaApp {
         const cuentaEsTotal = this.usuariosManager.cuentaTieneAccesoTotal();
 
         contenedor.innerHTML = usuariosSecundarios.map(usuario => {
-            const esAdmin  = usuario.rol === 'administrador';
-            const rolTexto = esAdmin ? '👑 Administrador' : '👤 Empleado';
-            const rolClase = esAdmin ? 'administrador' : 'empleado';
-
+            const esAdmin   = usuario.rol === 'administrador';
+            const rolTexto  = esAdmin ? '👑 Administrador' : '👤 Empleado';
+            const rolClase  = esAdmin ? 'administrador' : 'empleado';
             const efectivos = this.usuariosManager._resolverPermisosEfectivos(usuario);
 
             let permisosHtml = '';
@@ -1635,15 +1992,11 @@ class TiendaApp {
                     this.mostrarModalUsuario(id);
                 } else if (accion === 'eliminar-usuario') {
                     if (this.uiManager.confirmar('¿Eliminar este usuario? Esta acción no se puede deshacer.')) {
-                        const usuario = this.usuariosManager.obtenerPorId(id);
+                        const usuario   = this.usuariosManager.obtenerPorId(id);
                         const resultado = await this.usuariosManager.eliminarUsuario(id);
                         if (resultado.success) {
-                            // Auditoría
                             if (usuario) {
-                                this.auditoriaManager.registrar('USUARIO_ELIMINAR', {
-                                    nombre: usuario.nombre,
-                                    rol:    usuario.rol
-                                });
+                                this.auditoriaManager.registrar('USUARIO_ELIMINAR', { nombre: usuario.nombre, rol: usuario.rol });
                             }
                             this.cargarListaUsuarios();
                             this.uiManager.alerta('Usuario eliminado correctamente');

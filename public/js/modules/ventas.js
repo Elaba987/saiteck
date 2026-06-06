@@ -28,8 +28,8 @@ export class VentasManager {
         if (this.unsubscribe) this.unsubscribe();
     }
 
-    obtenerTodas()        { return this.ventas; }
-    obtenerVentaActual()  { return this.ventaActual; }
+    obtenerTodas()       { return this.ventas; }
+    obtenerVentaActual() { return this.ventaActual; }
 
     // ─── FILTROS POR FECHA ────────────────────────────────────────────────
 
@@ -73,10 +73,10 @@ export class VentasManager {
         };
 
         const item = {
-            producto:  productoSanitizado,
-            cantidad:  parseInt(cantidad),
-            subtotal:  producto.precioVenta * parseInt(cantidad),
-            esGranel:  false
+            producto: productoSanitizado,
+            cantidad: parseInt(cantidad),
+            subtotal: producto.precioVenta * parseInt(cantidad),
+            esGranel: false
         };
 
         this.ventaActual.push(item);
@@ -88,7 +88,7 @@ export class VentasManager {
      * costoGranel = costo proporcional a los gramos vendidos.
      */
     agregarItemGranel(producto, gramos, precio) {
-        const costoKilo        = producto.precioCompra || 0;
+        const costoKilo         = producto.precioCompra || 0;
         const costoProporcional = costoKilo * (parseFloat(gramos) / 1000);
 
         const productoSanitizado = {
@@ -151,7 +151,12 @@ export class VentasManager {
 
     // ─── FINALIZAR VENTA ─────────────────────────────────────────────────
 
-    async finalizarVenta() {
+    /**
+     * @param {object} [opcionesPago]
+     *   metodoPago: 'efectivo' | 'tarjeta'
+     *   infoTarjeta: { terminalNombre, intentId, monto }  (solo si tarjeta)
+     */
+    async finalizarVenta(opcionesPago = {}) {
         if (this.ventaActual.length === 0) {
             return { success: false, message: 'No hay productos en la venta' };
         }
@@ -163,17 +168,23 @@ export class VentasManager {
             ? { id: usuarioActual.id, nombre: usuarioActual.nombre, rol: usuarioActual.rol }
             : { id: 'system', nombre: 'Sistema', rol: 'sistema' };
 
+        // Método de pago
+        const metodoPago  = opcionesPago.metodoPago  || 'efectivo';
+        const infoTarjeta = opcionesPago.infoTarjeta  || null;
+
         const venta = {
-            items:   [...this.ventaActual],
+            items:      [...this.ventaActual],
             total,
-            fecha:   new Date().toISOString(),
-            usuario
+            fecha:      new Date().toISOString(),
+            usuario,
+            metodoPago,
+            ...(infoTarjeta && { infoTarjeta })
         };
 
         const resultado = await StorageManager.add(STORAGE_KEYS.VENTAS, venta);
 
         if (resultado.success) {
-            const numeroTicket  = this.ventas.length + 1;
+            const numeroTicket   = this.ventas.length + 1;
             const ventaFinalizada = { ...venta, numeroTicket, id: resultado.id };
 
             // ── Auditoría ──
@@ -184,10 +195,11 @@ export class VentasManager {
                 .join(', ');
 
             this._auditoria?.registrar('VENTA_CREAR', {
-                ticket:   `#${numeroTicket}`,
-                total:    `$${total.toFixed(2)}`,
-                items:    resumenItems,
-                cantidad: this.ventaActual.length
+                ticket:     `#${numeroTicket}`,
+                total:      `$${total.toFixed(2)}`,
+                metodoPago: metodoPago === 'tarjeta' ? `Tarjeta (${infoTarjeta?.terminalNombre || 'terminal'})` : 'Efectivo',
+                items:      resumenItems,
+                cantidad:   this.ventaActual.length
             }, usuario);
 
             this.ventaActual = [];
@@ -202,11 +214,15 @@ export class VentasManager {
     generarTicket(venta, numeroTicket) {
         const fecha         = new Date(venta.fecha);
         const usuarioNombre = venta.usuario?.nombre || 'Sistema';
+        const metodoPago    = venta.metodoPago === 'tarjeta'
+            ? `Tarjeta (${venta.infoTarjeta?.terminalNombre || 'terminal'})`
+            : 'Efectivo';
 
         return `======= TICKET DE VENTA =======
 Fecha: ${fecha.toLocaleDateString()} ${fecha.toLocaleTimeString()}
 Ticket #${numeroTicket}
 Atendido por: ${usuarioNombre}
+Método de pago: ${metodoPago}
 
 PRODUCTOS:
 ${venta.items.map(item => {
@@ -220,7 +236,7 @@ ${venta.items.map(item => {
 
 ================================
 TOTAL: $${venta.total.toFixed(2)}
-PAGO: $${venta.pago   ? venta.pago.toFixed(2)   : venta.total.toFixed(2)}
+PAGO: $${venta.pago    ? venta.pago.toFixed(2)   : venta.total.toFixed(2)}
 CAMBIO: $${venta.cambio ? venta.cambio.toFixed(2) : '0.00'}
 ================================
 
@@ -242,7 +258,6 @@ CAMBIO: $${venta.cambio ? venta.cambio.toFixed(2) : '0.00'}
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
 
-        // ── Auditoría ──
         this._auditoria?.registrar('VENTA_TICKET_DESCARGADO', {
             ticket: `#${numeroTicket}`,
             total:  `$${venta.total.toFixed(2)}`
