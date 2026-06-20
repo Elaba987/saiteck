@@ -1,5 +1,5 @@
 // functions/index.js
-// Proxy seguro para la API de Mercado Pago Point
+// Proxy seguro para la API de Mercado Pago Point (Orders API v1)
 // Despliega con: firebase deploy --only functions
 
 const { onRequest } = require('firebase-functions/v2/https');
@@ -12,10 +12,8 @@ admin.initializeApp();
 // Región donde se desplegará la función
 setGlobalOptions({ region: 'us-central1' });
 
-// Access Token de Mercado Pago
-// Para mayor seguridad puedes guardarlo con:
-//   firebase functions:config:set mercadopago.access_token="APP_USR-..."
-// y leerlo con: process.env.MERCADOPAGO_ACCESS_TOKEN
+// Access Token de Mercado Pago (modo prueba)
+// Para producción usa: firebase functions:secrets:set MERCADOPAGO_ACCESS_TOKEN
 const MP_TOKEN = () =>
     process.env.MERCADOPAGO_ACCESS_TOKEN ||
     'APP_USR-1092455173337722-060523-1e9533e9a8dd66757579f5f653dd74f1-3452805753';
@@ -61,18 +59,26 @@ function mpRequest(method, path, body, idempotencyKey) {
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // FUNCIÓN: mpPoint
-// Proxy para la API de Mercado Pago Point.
+// Proxy para la API de Mercado Pago Point (Orders API).
 // El frontend envía: { method, path, body, idempotencyKey }
 // La función verifica el Firebase ID Token antes de llamar a MP.
+//
+// Paths permitidos:
+//   GET  /terminals/v1/list                    → Listar terminals
+//   PATCH /terminals/v1/setup                  → Activar modo PDV
+//   POST /v1/orders                            → Crear order de pago
+//   GET  /v1/orders/:id                        → Obtener estado de order
+//   POST /v1/orders/:id/cancel                 → Cancelar order
+//   POST /v1/orders/:id/events                 → Simular evento (modo prueba)
 // ═══════════════════════════════════════════════════════════════════════════════
 exports.mpPoint = onRequest(
     {
-        cors: true,   // Firebase Functions v2 maneja CORS automáticamente
+        cors: true,
         region: 'us-central1'
     },
     async (req, res) => {
 
-        // Preflight ya lo maneja cors:true, pero por si acaso
+        // Preflight
         if (req.method === 'OPTIONS') {
             res.status(204).send('');
             return;
@@ -102,17 +108,27 @@ exports.mpPoint = onRequest(
         // Parámetros de la llamada a MP
         const { method = 'GET', path, body, idempotencyKey } = req.body;
 
-        if (!path || !path.startsWith('/point/')) {
-            res.status(400).json({ error: 'Path inválido' });
+        // Validar paths permitidos (terminales y orders)
+        const allowedPaths = [
+            /^\/terminals\/v1\/list(\?.*)?$/,
+            /^\/terminals\/v1\/setup$/,
+            /^\/v1\/orders$/,
+            /^\/v1\/orders\/[A-Z0-9]+$/,
+            /^\/v1\/orders\/[A-Z0-9]+\/cancel$/,
+            /^\/v1\/orders\/[A-Z0-9]+\/events$/
+        ];
+
+        if (!path || !allowedPaths.some(r => r.test(path))) {
+            res.status(400).json({ error: 'Path inválido o no permitido', path });
             return;
         }
 
         try {
             const result = await mpRequest(method.toUpperCase(), path, body, idempotencyKey);
 
-            // 204 DELETE exitoso
+            // 204 sin body
             if (result.status === 204) {
-                res.status(200).json({ deleted: true });
+                res.status(200).json({ success: true, noContent: true });
                 return;
             }
 

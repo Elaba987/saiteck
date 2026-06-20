@@ -2707,7 +2707,7 @@ canvas {
     }
 }
 
-/* styles_mp.css — Estilos Mercado Pago Point + Terminales */
+/* styles_mp.css — Estilos Mercado Pago Point + Terminales (Orders API v1) */
 
 /* ========================================
    BOTÓN COBRAR CON TARJETA (sección ventas)
@@ -2783,11 +2783,13 @@ canvas {
     background: white;
     border-radius: 20px;
     padding: 36px 32px;
-    max-width: 500px;
+    max-width: 520px;
     width: 100%;
     box-shadow: 0 30px 80px rgba(0, 0, 0, 0.35);
     animation: mpSlideUp 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
     position: relative;
+    max-height: 90vh;
+    overflow-y: auto;
 }
 
 @keyframes mpSlideUp {
@@ -2942,6 +2944,21 @@ canvas {
     line-height: 1.6;
 }
 
+/* ── ID de order ── */
+.mp-order-id-badge {
+    background: #f7fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 8px 14px;
+    margin: 14px auto 0;
+    max-width: 340px;
+    font-size: 11px;
+    color: #a0aec0;
+    font-family: 'Courier New', monospace;
+    text-align: center;
+    word-break: break-all;
+}
+
 /* ── Barra de progreso animada ── */
 .mp-progress-bar {
     height: 5px;
@@ -3011,6 +3028,98 @@ canvas {
 .btn-mp-cancelar:hover {
     background: #fff5f5;
     border-color: #f56565;
+}
+
+/* ========================================
+   SIMULADOR DE PAGO (solo modo prueba)
+   ======================================== */
+
+.mp-simulator-section {
+    background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%);
+    border: 2px dashed #f6ad55;
+    border-radius: 12px;
+    padding: 16px 20px;
+    margin-top: 20px;
+}
+
+.mp-simulator-title {
+    font-size: 13px;
+    font-weight: 700;
+    color: #92400e;
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.mp-simulator-title::before {
+    content: '🧪';
+    font-size: 16px;
+}
+
+.mp-simulator-btns {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.btn-simulate {
+    padding: 8px 14px;
+    border-radius: 8px;
+    border: 2px solid transparent;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.btn-simulate-approved {
+    background: #f0fff4;
+    color: #276749;
+    border-color: #9ae6b4;
+}
+
+.btn-simulate-approved:hover {
+    background: #c6f6d5;
+    border-color: #48bb78;
+}
+
+.btn-simulate-rejected {
+    background: #fff5f5;
+    color: #c53030;
+    border-color: #fed7d7;
+}
+
+.btn-simulate-rejected:hover {
+    background: #fed7d7;
+    border-color: #f56565;
+}
+
+.btn-simulate-cancel {
+    background: #f7fafc;
+    color: #4a5568;
+    border-color: #cbd5e0;
+}
+
+.btn-simulate-cancel:hover {
+    background: #e2e8f0;
+    border-color: #a0aec0;
+}
+
+/* ── Info badge modo prueba ── */
+.mp-test-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    background: #fef3c7;
+    border: 1px solid #f6ad55;
+    color: #92400e;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 3px 10px;
+    border-radius: 10px;
+    margin-left: 8px;
+    vertical-align: middle;
 }
 
 /* ========================================
@@ -3195,6 +3304,80 @@ canvas {
     box-shadow: 0 5px 16px rgba(0, 102, 204, 0.40);
 }
 
+/* ── Botón sincronizar con MP ── */
+.btn-mp-sync {
+    background: white;
+    color: #009ee3;
+    border: 2px solid #009ee3;
+    border-radius: 10px;
+    padding: 9px 18px;
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    transition: all 0.22s;
+}
+
+.btn-mp-sync:hover {
+    background: #ebf8ff;
+    transform: translateY(-1px);
+}
+
+.btn-mp-sync:disabled {
+    opacity: 0.55;
+    cursor: wait;
+}
+
+/* ── Lista de terminales MP (del API) ── */
+.mp-api-terminals-list {
+    background: #f7fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    margin-top: 12px;
+    overflow: hidden;
+}
+
+.mp-api-terminal-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 18px;
+    border-bottom: 1px solid #e2e8f0;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.mp-api-terminal-item:last-child {
+    border-bottom: none;
+}
+
+.mp-api-terminal-id {
+    font-family: 'Courier New', monospace;
+    font-size: 12px;
+    color: #2d3748;
+    font-weight: 600;
+    word-break: break-all;
+}
+
+.mp-api-terminal-mode {
+    font-size: 11px;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 8px;
+}
+
+.mp-api-terminal-mode.pdv {
+    background: #edf7ed;
+    color: #276749;
+}
+
+.mp-api-terminal-mode.standalone {
+    background: #ebf4ff;
+    color: #2b6cb0;
+}
+
 /* ========================================
    MODAL CREAR / EDITAR TERMINAL
    ======================================== */
@@ -3218,10 +3401,12 @@ canvas {
     background: white;
     border-radius: 18px;
     padding: 32px 28px;
-    max-width: 460px;
+    max-width: 480px;
     width: 100%;
     box-shadow: 0 24px 64px rgba(0, 0, 0, 0.28);
     animation: mpSlideUp 0.28s cubic-bezier(0.34, 1.56, 0.64, 1);
+    max-height: 90vh;
+    overflow-y: auto;
 }
 
 .terminal-modal-header {
@@ -3243,7 +3428,7 @@ canvas {
     margin: 0;
 }
 
-/* ── Info helper del Device ID ── */
+/* ── Info helper del Terminal ID ── */
 .mp-device-id-help {
     background: #ebf8ff;
     border: 1px solid #bee3f8;
@@ -3265,6 +3450,57 @@ canvas {
     font-size: 12px;
     color: #2b6cb0;
     line-height: 1.6;
+}
+
+/* ── Sección de pasos para obtener Terminal ID ── */
+.mp-steps-section {
+    background: #f7fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    padding: 16px;
+    margin-top: 16px;
+}
+
+.mp-steps-title {
+    font-size: 13px;
+    font-weight: 700;
+    color: #2d3748;
+    margin-bottom: 12px;
+}
+
+.mp-steps-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.mp-steps-list li {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+    margin-bottom: 10px;
+    font-size: 12px;
+    color: #4a5568;
+    line-height: 1.5;
+}
+
+.mp-steps-list li:last-child {
+    margin-bottom: 0;
+}
+
+.mp-step-num {
+    background: #009ee3;
+    color: white;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    font-size: 11px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    margin-top: 1px;
 }
 
 /* ========================================
@@ -3289,6 +3525,15 @@ canvas {
         width: 100%;
         justify-content: flex-end;
     }
+
+    .mp-simulator-btns {
+        flex-direction: column;
+    }
+
+    .btn-simulate {
+        width: 100%;
+        text-align: center;
+    }
 }
 
 @media (max-width: 480px) {
@@ -3303,6 +3548,7 @@ canvas {
         border-radius: 20px 20px 0 0;
         padding: 24px 16px 32px;
         max-width: 100%;
+        max-height: 95vh;
     }
 
     .btn-tarjeta {

@@ -16,10 +16,12 @@ export const TIPOS_OPERACION = {
     VENTA_CREAR:                { label: 'Realizó venta',                  icono: '💰✅', categoria: 'Ventas' },
     VENTA_TICKET_DESCARGADO:    { label: 'Descargó ticket de venta',       icono: '🎫📥', categoria: 'Ventas' },
 
-    // ── Pagos con tarjeta (Mercado Pago) ──
+    // ── Pagos con tarjeta (Mercado Pago Orders API) ──
     PAGO_TARJETA_INICIADO:      { label: 'Inició cobro con tarjeta',       icono: '💳📡', categoria: 'Ventas' },
     PAGO_TARJETA_CONFIRMADO:    { label: 'Confirmó pago con tarjeta',      icono: '💳✅', categoria: 'Ventas' },
     PAGO_TARJETA_CANCELADO:     { label: 'Canceló cobro con tarjeta',      icono: '💳❌', categoria: 'Ventas' },
+    PAGO_TARJETA_EXPIRADO:      { label: 'Order de pago expirada',         icono: '💳⏱️', categoria: 'Ventas' },
+    PAGO_TARJETA_FALLIDO:       { label: 'Pago con tarjeta fallido',       icono: '💳⚠️', categoria: 'Ventas' },
 
     // ── Proveedores ──
     PROVEEDOR_CREAR:            { label: 'Creó proveedor',                 icono: '🚚➕', categoria: 'Proveedores' },
@@ -37,6 +39,7 @@ export const TIPOS_OPERACION = {
     TERMINAL_CREAR:             { label: 'Registró terminal MP',           icono: '🖥️➕', categoria: 'Terminales' },
     TERMINAL_EDITAR:            { label: 'Editó terminal MP',              icono: '🖥️✏️', categoria: 'Terminales' },
     TERMINAL_ELIMINAR:          { label: 'Eliminó terminal MP',            icono: '🖥️🗑️', categoria: 'Terminales' },
+    TERMINAL_PDV_ACTIVADO:      { label: 'Activó modo PDV en terminal',    icono: '🖥️✅', categoria: 'Terminales' },
 
     // ── Usuarios / Perfiles ──
     USUARIO_CREAR:              { label: 'Creó usuario',                   icono: '👤➕', categoria: 'Usuarios' },

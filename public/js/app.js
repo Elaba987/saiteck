@@ -14,6 +14,9 @@ import { AdminPanelManager }   from './modules/adminPanel.js';
 import { TerminalesManager }   from './modules/terminales.js';
 import { MercadoPagoManager }  from './modules/mercadopago.js';
 
+// Detectar si estamos en modo prueba (Access Token empieza con APP_USR o TEST)
+const MP_IS_TEST_MODE = true; // Cambiar a false en producción
+
 class TiendaApp {
     constructor() {
         this.productosManager    = new ProductosManager();
@@ -38,8 +41,8 @@ class TiendaApp {
         this.datosInicializados   = false;
 
         // Estado del flujo de cobro con tarjeta
-        this._pagoTarjetaActivo   = false;
-        this._terminalSeleccionada = null;
+        this._pagoTarjetaActivo    = false;
+        this._terminalSeleccionada = null;  // { id (Firestore), terminalId (MP), nombre }
 
         this.init();
     }
@@ -923,7 +926,7 @@ class TiendaApp {
 
         const usuarioNombre  = resultado.venta.usuario?.nombre || 'Sistema';
         const metodoPagoText = metodoPago === 'tarjeta'
-            ? `Tarjeta — ${opcionesPago.infoTarjeta?.terminalNombre || 'terminal'}`
+            ? `Tarjeta MP — ${opcionesPago.infoTarjeta?.terminalNombre || 'terminal'}`
             : 'Efectivo';
 
         this.uiManager.alerta(
@@ -942,7 +945,7 @@ class TiendaApp {
     }
 
     // ============================================================
-    // COBRO CON TARJETA — MERCADO PAGO
+    // COBRO CON TARJETA — MERCADO PAGO (Orders API v1)
     // ============================================================
 
     abrirModalCobrarTarjeta() {
@@ -958,90 +961,130 @@ class TiendaApp {
             return;
         }
 
-        const total        = this.ventasManager.calcularTotal();
-        const contenedor   = document.getElementById('cobrarTarjetaContenido');
+        const total      = this.ventasManager.calcularTotal();
+        const contenedor = document.getElementById('cobrarTarjetaContenido');
         if (!contenedor) return;
 
         // Limpiar estado anterior
-        this.mercadoPagoManager.limpiarIntentActual();
+        this.mercadoPagoManager.limpiarOrderActual();
         this._pagoTarjetaActivo    = false;
         this._terminalSeleccionada = null;
 
+        const testBadge = MP_IS_TEST_MODE
+            ? '<span class="mp-test-badge">🧪 Modo prueba</span>'
+            : '';
+
         contenedor.innerHTML = `
-            <!-- Paso 1: Selección de terminal -->
+            <!-- Paso 1: Selección de terminal y monto -->
             <div id="mpPaso1">
-                <p style="color:#4a5568;margin-bottom:16px;">
-                    Total a cobrar: <strong style="font-size:22px;color:var(--color-primario);">$${total.toFixed(2)}</strong>
-                </p>
+                <div class="mp-total-badge">
+                    <span class="mp-total-label">Total a cobrar ${testBadge}</span>
+                    <span class="mp-total-amount">$${total.toFixed(2)}</span>
+                </div>
+
                 <div class="form-group">
-                    <label>Seleccionar terminal</label>
-                    <select id="mpSelectTerminal" style="font-size:16px;">
+                    <label style="font-weight:700;color:#2d3748;margin-bottom:8px;display:block;">
+                        🖥️ Seleccionar terminal
+                    </label>
+                    <select id="mpSelectTerminal" class="mp-terminal-select">
                         <option value="">-- Elige una terminal --</option>
                         ${terminales.map(t => `
-                            <option value="${t.id}" data-device="${t.deviceId}" data-nombre="${t.nombre}">
-                                ${t.nombre} (${t.deviceId})
+                            <option value="${t.id}"
+                                    data-terminal-id="${t.terminalId}"
+                                    data-nombre="${t.nombre}">
+                                ${t.nombre}
+                                <small style="color:#718096;">(${t.terminalId})</small>
                             </option>
                         `).join('')}
                     </select>
                 </div>
-                <div style="display:flex;gap:10px;margin-top:20px;">
-                    <button id="btnMPEnviar" class="btn btn-primary">
+
+                <div style="display:flex;gap:10px;margin-top:20px;flex-wrap:wrap;">
+                    <button id="btnMPEnviar" class="btn-mp-confirmar" style="flex:1;">
                         💳 Enviar cobro a terminal
                     </button>
-                    <button id="btnMPCancelarPaso1" class="btn btn-secondary">
+                    <button id="btnMPCancelarPaso1" class="btn-mp-cancelar">
                         Cancelar
                     </button>
                 </div>
             </div>
 
-            <!-- Paso 2: Esperando pago (oculto inicialmente) -->
+            <!-- Paso 2: Estado de la order / esperando pago -->
             <div id="mpPaso2" class="hidden">
-                <div id="mpEstadoContenedor" style="text-align:center;padding:20px 0;">
-                    <div style="font-size:48px;margin-bottom:12px;" id="mpEstadoIcono">📡</div>
-                    <p style="font-size:18px;font-weight:700;color:#2d3748;" id="mpEstadoTexto">
-                        Enviando a terminal...
-                    </p>
-                    <p style="font-size:13px;color:#718096;margin-top:8px;" id="mpEstadoSub"></p>
-                    <div id="mpProgressBar" style="
-                        height:4px;border-radius:2px;background:#e2e8f0;margin:20px auto;max-width:300px;overflow:hidden;">
-                        <div id="mpProgressFill" style="
-                            height:100%;width:30%;background:var(--color-primario);
-                            border-radius:2px;animation:mpSlide 1.2s ease-in-out infinite;"></div>
-                    </div>
+                <div class="mp-estado-container" id="mpEstadoContenedor">
+                    <span id="mpEstadoIcono" class="mp-estado-icono">📡</span>
+                    <p id="mpEstadoTexto" class="mp-estado-texto">Enviando a terminal...</p>
+                    <p id="mpEstadoSub" class="mp-estado-sub"></p>
+                    <div id="mpOrderIdBadge" class="mp-order-id-badge hidden"></div>
                 </div>
-                <div style="display:flex;gap:10px;justify-content:center;margin-top:10px;">
-                    <button id="btnMPConfirmar" class="btn btn-success hidden">
+
+                <div class="mp-progress-bar" id="mpProgressBar">
+                    <div class="mp-progress-fill"></div>
+                </div>
+
+                <div class="mp-actions">
+                    <button id="btnMPConfirmar" class="btn-mp-confirmar hidden">
                         ✅ Confirmar pago recibido
                     </button>
-                    <button id="btnMPCancelarIntent" class="btn btn-danger">
+                    <button id="btnMPCancelarIntent" class="btn-mp-cancelar">
                         ❌ Cancelar cobro
                     </button>
                 </div>
+
+                ${MP_IS_TEST_MODE ? `
+                <!-- Simulador solo en modo prueba -->
+                <div class="mp-simulator-section" id="mpSimulador">
+                    <div class="mp-simulator-title">
+                        Simulador de pago (solo en modo prueba)
+                    </div>
+                    <p style="font-size:12px;color:#92400e;margin-bottom:10px;">
+                        Como no hay terminal física, simula el resultado del pago:
+                    </p>
+                    <div class="mp-simulator-btns">
+                        <button id="btnSimulateApproved" class="btn-simulate btn-simulate-approved">
+                            ✅ Simular pago aprobado
+                        </button>
+                        <button id="btnSimulateRejected" class="btn-simulate btn-simulate-rejected">
+                            ❌ Simular pago rechazado
+                        </button>
+                        <button id="btnSimulateCancel" class="btn-simulate btn-simulate-cancel">
+                            🚫 Simular cancelación
+                        </button>
+                    </div>
+                </div>
+                ` : ''}
             </div>
         `;
 
         // Eventos del modal
-        document.getElementById('btnMPEnviar')?.addEventListener('click', () => this._enviarCobroATerminal());
+        document.getElementById('btnMPEnviar')?.addEventListener('click',       () => this._enviarCobroATerminal());
         document.getElementById('btnMPCancelarPaso1')?.addEventListener('click', () => this.cerrarModal('modalCobrarTarjeta'));
         document.getElementById('btnMPCancelarIntent')?.addEventListener('click', () => this._cancelarCobroTarjeta());
-        document.getElementById('btnMPConfirmar')?.addEventListener('click', () => this._confirmarPagoTarjeta());
+        document.getElementById('btnMPConfirmar')?.addEventListener('click',     () => this._confirmarPagoTarjeta());
+
+        // Botones del simulador (solo modo prueba)
+        if (MP_IS_TEST_MODE) {
+            document.getElementById('btnSimulateApproved')?.addEventListener('click', () => this._simularEstado('processed'));
+            document.getElementById('btnSimulateRejected')?.addEventListener('click', () => this._simularEstado('failed'));
+            document.getElementById('btnSimulateCancel')?.addEventListener('click',   () => this._simularEstado('canceled'));
+        }
 
         this.abrirModal('modalCobrarTarjeta');
     }
 
     async _enviarCobroATerminal() {
-        const select   = document.getElementById('mpSelectTerminal');
-        const option   = select?.selectedOptions[0];
-        const termId   = select?.value;
-        const deviceId = option?.dataset.device;
-        const nombre   = option?.dataset.nombre;
+        const select    = document.getElementById('mpSelectTerminal');
+        const option    = select?.selectedOptions[0];
+        const firestoreId = select?.value;
+        const terminalId  = option?.dataset.terminalId;
+        const nombre      = option?.dataset.nombre;
 
-        if (!termId || !deviceId) {
+        if (!firestoreId || !terminalId) {
             this.uiManager.alerta('Selecciona una terminal');
             return;
         }
 
-        this._terminalSeleccionada = { id: termId, deviceId, nombre };
+        this._terminalSeleccionada = { id: firestoreId, terminalId, nombre };
 
         const total       = this.ventasManager.calcularTotal();
         const items       = this.ventasManager.obtenerVentaActual();
@@ -1049,82 +1092,130 @@ class TiendaApp {
             ? items[0].producto.nombre
             : `Venta de ${items.length} productos`;
 
-        // Mostrar paso 2
+        // Pasar al paso 2
         document.getElementById('mpPaso1').classList.add('hidden');
         document.getElementById('mpPaso2').classList.remove('hidden');
-        this._actualizarEstadoMP('OPEN');
 
-        const btnEnviar = document.getElementById('btnMPEnviar');
-        if (btnEnviar) btnEnviar.disabled = true;
+        // Ocultar simulador hasta tener la order
+        if (MP_IS_TEST_MODE) {
+            document.getElementById('mpSimulador')?.classList.add('hidden');
+        }
 
-        const resultado = await this.mercadoPagoManager.crearPaymentIntent(deviceId, total, descripcion);
+        this._actualizarEstadoMP('created');
+
+        // Crear order con la Orders API
+        const resultado = await this.mercadoPagoManager.crearOrder(terminalId, total, descripcion);
 
         if (!resultado.success) {
-            // Volver a paso 1 con error
+            // Volver al paso 1
             document.getElementById('mpPaso2').classList.add('hidden');
             document.getElementById('mpPaso1').classList.remove('hidden');
-            if (btnEnviar) btnEnviar.disabled = false;
-
-            this.uiManager.alerta(`❌ No se pudo enviar el cobro:\n${resultado.mensaje}`);
-
-            if (resultado.esCORS) {
-                console.warn('[MP] CORS error — en producción usa un backend propio como proxy.');
-            }
+            this.uiManager.alerta(`❌ No se pudo crear la order:\n${resultado.mensaje}`);
             return;
         }
 
         this._pagoTarjetaActivo = true;
 
+        // Mostrar Order ID
+        const orderBadge = document.getElementById('mpOrderIdBadge');
+        if (orderBadge) {
+            orderBadge.textContent = `Order ID: ${resultado.orderId}`;
+            orderBadge.classList.remove('hidden');
+        }
+
+        // Mostrar simulador una vez creada la order
+        if (MP_IS_TEST_MODE) {
+            document.getElementById('mpSimulador')?.classList.remove('hidden');
+        }
+
         // Auditoría
         this.auditoriaManager.registrar('PAGO_TARJETA_INICIADO', {
             terminal: nombre,
-            deviceId,
-            intentId: resultado.intentId,
+            terminalId,
+            orderId:  resultado.orderId,
             monto:    `$${total.toFixed(2)}`
         });
 
-        // Polling para detectar cambios de estado automáticamente
+        // Iniciar polling para detectar cambios de estado automáticamente
         this.mercadoPagoManager.setOnEstadoCambia((estado) => {
             this._actualizarEstadoMP(estado);
         });
-        this.mercadoPagoManager.iniciarPolling(deviceId, resultado.intentId);
+        this.mercadoPagoManager.iniciarPolling(resultado.orderId);
     }
 
     _actualizarEstadoMP(estado) {
         const info = this.mercadoPagoManager.describirEstado(estado);
 
-        const iconoEl = document.getElementById('mpEstadoIcono');
-        const textoEl = document.getElementById('mpEstadoTexto');
-        const subEl   = document.getElementById('mpEstadoSub');
-        const barEl   = document.getElementById('mpProgressBar');
-        const btnConf = document.getElementById('btnMPConfirmar');
+        const iconoEl    = document.getElementById('mpEstadoIcono');
+        const textoEl    = document.getElementById('mpEstadoTexto');
+        const subEl      = document.getElementById('mpEstadoSub');
+        const barEl      = document.getElementById('mpProgressBar');
+        const btnConf    = document.getElementById('btnMPConfirmar');
+        const btnCancel  = document.getElementById('btnMPCancelarIntent');
 
-        if (iconoEl) iconoEl.textContent = info.icono;
+        if (iconoEl) {
+            iconoEl.textContent = info.icono;
+            // Detener animación en estados terminales
+            if (['processed', 'canceled', 'expired', 'failed'].includes(estado)) {
+                iconoEl.classList.add('static');
+            } else {
+                iconoEl.classList.remove('static');
+            }
+        }
         if (textoEl) { textoEl.textContent = info.texto; textoEl.style.color = info.color; }
 
         const subs = {
-            'OPEN':        'La solicitud fue enviada. La terminal debería mostrar la pantalla de cobro.',
-            'ON_TERMINAL': 'Pide al cliente que acerque o inserte su tarjeta en la terminal.',
-            'PROCESSING':  'El pago está siendo procesado por la red bancaria...',
-            'PROCESSED':   'El pago fue aprobado. Confirma para registrar la venta.',
-            'CANCELED':    'El cobro fue cancelado en la terminal.',
-            'ERROR':       'Ocurrió un error. Intenta nuevamente.'
+            'created':         'La order fue enviada. La terminal debería mostrar la pantalla de pago en breve.',
+            'at_terminal':     'La terminal recibió la solicitud. Pide al cliente que acerque o inserte su tarjeta.',
+            'processed':       '¡El pago fue aprobado! Confirma para registrar la venta en el sistema.',
+            'canceled':        'El pago fue cancelado. Puedes intentar de nuevo o cobrar en efectivo.',
+            'expired':         'La order expiró sin ser procesada (15 min). Intenta de nuevo.',
+            'failed':          'El pago fue rechazado. Intenta de nuevo o cobra en efectivo.',
+            'action_required': 'La terminal requiere una acción del cliente o del cajero.'
         };
         if (subEl) subEl.textContent = subs[estado] || '';
 
-        // Mostrar botón de confirmar cuando el estado es PROCESSED
+        // Mostrar botón confirmar solo cuando el pago fue procesado
         if (btnConf) {
-            if (estado === 'PROCESSED') {
+            if (estado === 'processed') {
                 btnConf.classList.remove('hidden');
-                if (barEl) barEl.style.display = 'none';
             } else {
                 btnConf.classList.add('hidden');
             }
         }
 
+        // Deshabilitar cancelar en estados terminales
+        if (btnCancel) {
+            if (['processed', 'canceled', 'expired', 'failed'].includes(estado)) {
+                btnCancel.disabled    = true;
+                btnCancel.textContent = estado === 'processed' ? '✅ Pago exitoso' : '❌ Finalizado';
+            }
+        }
+
         // Ocultar barra de progreso en estados terminales
-        if (['PROCESSED', 'CANCELED', 'ERROR'].includes(estado)) {
+        if (['processed', 'canceled', 'expired', 'failed'].includes(estado)) {
             if (barEl) barEl.style.display = 'none';
+        }
+    }
+
+    /**
+     * Simula un cambio de estado de la order (solo modo prueba).
+     * En producción, el estado cambia automáticamente via polling.
+     */
+    _simularEstado(estado) {
+        this.mercadoPagoManager.detenerPolling();
+        const order = this.mercadoPagoManager.obtenerOrderActual();
+        if (order) order.status = estado;
+        this._actualizarEstadoMP(estado);
+
+        if (estado === 'failed' || estado === 'canceled' || estado === 'expired') {
+            const tipo = estado === 'canceled' ? 'PAGO_TARJETA_CANCELADO'
+                       : estado === 'expired'  ? 'PAGO_TARJETA_EXPIRADO'
+                       : 'PAGO_TARJETA_FALLIDO';
+            this.auditoriaManager.registrar(tipo, {
+                terminal: this._terminalSeleccionada?.nombre || '-',
+                motivo:   `Simulado: ${estado}`
+            });
         }
     }
 
@@ -1134,20 +1225,24 @@ class TiendaApp {
             return;
         }
 
-        const intent = this.mercadoPagoManager.obtenerIntentActual();
-        if (intent) {
-            const resultado = await this.mercadoPagoManager.cancelarIntent(intent.deviceId, intent.id);
+        const order = this.mercadoPagoManager.obtenerOrderActual();
+
+        if (order?.id) {
+            const resultado = await this.mercadoPagoManager.cancelarOrder(order.id);
+
             this.auditoriaManager.registrar('PAGO_TARJETA_CANCELADO', {
                 terminal: this._terminalSeleccionada?.nombre || '-',
-                intentId: intent.id,
-                monto:    `$${intent.monto?.toFixed(2) || '0.00'}`
+                orderId:  order.id,
+                monto:    `$${order.monto?.toFixed(2) || '0.00'}`
             });
+
             if (!resultado.success) {
-                this.uiManager.alerta(`Nota: ${resultado.mensaje}`);
+                // Si no se pudo cancelar por API (ej: ya está at_terminal), avisar
+                this.uiManager.alerta(`ℹ️ ${resultado.mensaje}`);
             }
         }
 
-        this.mercadoPagoManager.limpiarIntentActual();
+        this.mercadoPagoManager.limpiarOrderActual();
         this._pagoTarjetaActivo    = false;
         this._terminalSeleccionada = null;
         this.cerrarModal('modalCobrarTarjeta');
@@ -1156,16 +1251,16 @@ class TiendaApp {
     async _confirmarPagoTarjeta() {
         if (!this._terminalSeleccionada) return;
 
-        const total  = this.ventasManager.calcularTotal();
-        const intent = this.mercadoPagoManager.obtenerIntentActual();
+        const total = this.ventasManager.calcularTotal();
+        const order = this.mercadoPagoManager.obtenerOrderActual();
 
         this.auditoriaManager.registrar('PAGO_TARJETA_CONFIRMADO', {
             terminal: this._terminalSeleccionada.nombre,
-            intentId: intent?.id || '-',
+            orderId:  order?.id || '-',
             monto:    `$${total.toFixed(2)}`
         });
 
-        this.mercadoPagoManager.limpiarIntentActual();
+        this.mercadoPagoManager.limpiarOrderActual();
         this._pagoTarjetaActivo = false;
         this.cerrarModal('modalCobrarTarjeta');
 
@@ -1173,8 +1268,8 @@ class TiendaApp {
             metodoPago: 'tarjeta',
             infoTarjeta: {
                 terminalNombre: this._terminalSeleccionada.nombre,
-                deviceId:       this._terminalSeleccionada.deviceId,
-                intentId:       intent?.id || ''
+                terminalId:     this._terminalSeleccionada.terminalId,
+                orderId:        order?.id || ''
             }
         });
 
@@ -1518,18 +1613,20 @@ class TiendaApp {
     }
 
     // ============================================================
-    // TERMINALES MERCADO PAGO — GESTIÓN
+    // TERMINALES MERCADO PAGO — GESTIÓN (con Terminal ID de la API de MP)
     // ============================================================
     inicializarTerminales() {
-        // El botón de crear terminal está en configuración, se bindea en
-        // _actualizarVistaTerminales() porque el HTML se renderiza dinámicamente
+        // El form se bindea en actualizarInfoUsuarioEnConfiguracion()
     }
 
+    /**
+     * Renderiza la sección de terminales en Configuración.
+     * Ahora el campo es "Terminal ID" (obtenido desde la app MP o el panel de desarrolladores).
+     */
     _actualizarVistaTerminales() {
         const contenedor = document.getElementById('seccionTerminalesContenido');
         if (!contenedor) return;
 
-        // Solo administradores pueden gestionar terminales
         if (!this.usuariosManager.esAdministrador()) {
             contenedor.innerHTML = '<p style="color:#718096;font-size:14px;">Solo el administrador puede gestionar las terminales.</p>';
             return;
@@ -1538,16 +1635,26 @@ class TiendaApp {
         const terminales = this.terminalesManager.obtenerTodas();
 
         contenedor.innerHTML = `
-            <button id="btnAgregarTerminal" class="btn btn-primary" style="margin-bottom:20px;">
-                ➕ Registrar Terminal
-            </button>
+            <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:20px;align-items:center;">
+                <button id="btnAgregarTerminal" class="btn-mp-add">
+                    ➕ Agregar Terminal
+                </button>
+                <button id="btnVerTerminalesMP" class="btn-mp-sync">
+                    🔄 Ver terminales en mi cuenta MP
+                </button>
+            </div>
+
+            <!-- Lista de terminales de MP (se carga al pulsar el botón) -->
+            <div id="mpApiTerminalsList" class="hidden"></div>
+
+            <!-- Terminales registradas en el sistema -->
             ${terminales.length === 0 ? `
-                <div style="text-align:center;padding:30px;color:#718096;background:#f7fafc;border-radius:10px;">
+                <div style="text-align:center;padding:30px;color:#718096;background:#f7fafc;border-radius:10px;border:2px dashed #bee3f8;">
                     <p style="font-size:32px;">🖥️</p>
-                    <p style="margin-top:8px;">No hay terminales registradas.</p>
-                    <p style="font-size:13px;margin-top:5px;">
-                        Encuentra el Device ID de tu terminal Point Smart en la app de Mercado Pago
-                        o en el panel de desarrolladores.
+                    <p style="margin-top:8px;font-weight:600;">No hay terminales registradas.</p>
+                    <p style="font-size:13px;margin-top:5px;max-width:400px;margin-left:auto;margin-right:auto;">
+                        Registra el <strong>Terminal ID</strong> de tu dispositivo Mercado Pago Point
+                        (lo encuentras en la app MP → Cobrar con Point → tu dispositivo → Ajustes).
                     </p>
                 </div>
             ` : terminales.map(t => `
@@ -1557,7 +1664,7 @@ class TiendaApp {
                     display:flex;align-items:center;justify-content:space-between;
                     flex-wrap:wrap;gap:12px;transition:border-color .2s;">
                     <div>
-                        <div style="display:flex;align-items:center;gap:10px;">
+                        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
                             <span style="font-size:24px;">🖥️</span>
                             <div>
                                 <strong style="font-size:16px;color:#2d3748;">${t.nombre}</strong>
@@ -1570,22 +1677,23 @@ class TiendaApp {
                                 </span>
                             </div>
                         </div>
-                        <p style="font-size:12px;color:#718096;margin-top:6px;font-family:monospace;">
-                            Device ID: ${t.deviceId}
+                        <p style="font-size:12px;color:#718096;margin-top:6px;font-family:monospace;word-break:break-all;">
+                            Terminal ID: ${t.terminalId}
                         </p>
                     </div>
                     <div style="display:flex;gap:8px;flex-wrap:wrap;">
-                        <button class="btn btn-primary btn-sm"  data-accion="editar-terminal"   data-id="${t.id}">✏️ Editar</button>
-                        <button class="btn btn-secondary btn-sm" data-accion="toggle-terminal"  data-id="${t.id}">
+                        <button class="btn btn-primary btn-sm"   data-accion="editar-terminal"   data-id="${t.id}">✏️ Editar</button>
+                        <button class="btn btn-secondary btn-sm" data-accion="toggle-terminal"   data-id="${t.id}">
                             ${t.activa ? '⏸ Desactivar' : '▶ Activar'}
                         </button>
-                        <button class="btn btn-danger btn-sm"   data-accion="eliminar-terminal" data-id="${t.id}">🗑️ Eliminar</button>
+                        <button class="btn btn-danger btn-sm"    data-accion="eliminar-terminal" data-id="${t.id}">🗑️ Eliminar</button>
                     </div>
                 </div>
             `).join('')}
         `;
 
         document.getElementById('btnAgregarTerminal')?.addEventListener('click', () => this.abrirModalTerminal());
+        document.getElementById('btnVerTerminalesMP')?.addEventListener('click', () => this._cargarTerminalesDeMP());
 
         contenedor.querySelectorAll('button[data-accion]').forEach(btn => {
             btn.addEventListener('click', async () => {
@@ -1597,30 +1705,116 @@ class TiendaApp {
         });
     }
 
-    abrirModalTerminal(id = null) {
-        const terminal  = id ? this.terminalesManager.obtenerPorId(id) : null;
-        const titulo    = document.getElementById('tituloModalTerminal');
-        const form      = document.getElementById('formTerminal');
+    /**
+     * Carga la lista de terminales desde la API de Mercado Pago y la muestra.
+     */
+    async _cargarTerminalesDeMP() {
+        const btn = document.getElementById('btnVerTerminalesMP');
+        if (btn) { btn.disabled = true; btn.textContent = '🔄 Cargando...'; }
+
+        const listDiv = document.getElementById('mpApiTerminalsList');
+
+        try {
+            const terminalesMP = await this.terminalesManager.obtenerTerminalesDeMP(this.mercadoPagoManager);
+
+            if (!listDiv) return;
+
+            if (terminalesMP.length === 0) {
+                listDiv.innerHTML = `
+                    <div style="background:#fffbeb;border:1px solid #f6ad55;border-radius:10px;padding:16px;margin-bottom:16px;">
+                        <p style="color:#92400e;font-size:14px;margin:0;">
+                            ⚠️ No se encontraron terminales en tu cuenta de Mercado Pago, o el Access Token
+                            no tiene los permisos necesarios (<em>point:read</em>).
+                        </p>
+                    </div>`;
+            } else {
+                listDiv.innerHTML = `
+                    <div style="background:#f0fff4;border:1px solid #9ae6b4;border-radius:10px;padding:16px;margin-bottom:16px;">
+                        <p style="font-weight:700;color:#276749;margin-bottom:12px;">
+                            ✅ Terminales encontradas en tu cuenta MP (${terminalesMP.length}):
+                        </p>
+                        <div class="mp-api-terminals-list">
+                            ${terminalesMP.map(t => `
+                                <div class="mp-api-terminal-item">
+                                    <div>
+                                        <div class="mp-api-terminal-id">${t.id}</div>
+                                        <div style="font-size:11px;color:#718096;margin-top:2px;">
+                                            Modo: <span class="mp-api-terminal-mode ${t.operating_mode === 'PDV' ? 'pdv' : 'standalone'}">
+                                                ${t.operating_mode || 'STANDALONE'}
+                                            </span>
+                                            ${t.store_id ? ` | Tienda: ${t.store_id}` : ''}
+                                        </div>
+                                    </div>
+                                    <button class="btn-mp-add" style="padding:7px 14px;font-size:12px;"
+                                        data-accion="usar-terminal-id" data-terminal-id="${t.id}">
+                                        ➕ Usar este ID
+                                    </button>
+                                </div>
+                            `).join('')}
+                        </div>
+                        <p style="font-size:12px;color:#718096;margin-top:10px;">
+                            Haz clic en "Usar este ID" para pre-rellenar el formulario de registro.
+                        </p>
+                    </div>`;
+
+                // Botones para usar el ID directamente
+                listDiv.querySelectorAll('button[data-accion="usar-terminal-id"]').forEach(btn2 => {
+                    btn2.addEventListener('click', () => {
+                        const tid = btn2.dataset.terminalId;
+                        this.abrirModalTerminal(null, tid);
+                    });
+                });
+            }
+
+            listDiv.classList.remove('hidden');
+        } catch (err) {
+            console.error('[TerminalesMP]', err);
+            if (listDiv) {
+                listDiv.innerHTML = `
+                    <div style="background:#fff5f5;border:1px solid #fed7d7;border-radius:10px;padding:16px;margin-bottom:16px;">
+                        <p style="color:#c53030;font-size:14px;margin:0;">❌ Error al consultar la API de MP: ${err.message}</p>
+                    </div>`;
+                listDiv.classList.remove('hidden');
+            }
+        } finally {
+            if (btn) { btn.disabled = false; btn.textContent = '🔄 Ver terminales en mi cuenta MP'; }
+        }
+    }
+
+    /**
+     * Abre el modal para agregar/editar una terminal.
+     * @param {string|null} id          - ID Firestore de la terminal (null = nueva)
+     * @param {string|null} terminalId  - Terminal ID de MP a pre-rellenar (opcional)
+     */
+    abrirModalTerminal(id = null, terminalId = null) {
+        const terminal = id ? this.terminalesManager.obtenerPorId(id) : null;
+        const titulo   = document.getElementById('tituloModalTerminal');
+        const form     = document.getElementById('formTerminal');
 
         if (!form) return;
         form.reset();
         document.getElementById('terminalId').value = id || '';
 
         if (titulo) titulo.textContent = terminal ? 'Editar Terminal' : 'Registrar Terminal';
+
         if (terminal) {
             document.getElementById('terminalNombre').value   = terminal.nombre;
-            document.getElementById('terminalDeviceId').value = terminal.deviceId;
+            document.getElementById('terminalDeviceId').value = terminal.terminalId;
+        } else if (terminalId) {
+            // Pre-rellenar desde la lista de MP
+            document.getElementById('terminalDeviceId').value = terminalId;
+            setTimeout(() => document.getElementById('terminalNombre')?.focus(), 100);
         }
 
         this.abrirModal('modalTerminal');
     }
 
     async _guardarTerminal() {
-        const id       = document.getElementById('terminalId').value;
-        const nombre   = document.getElementById('terminalNombre').value;
-        const deviceId = document.getElementById('terminalDeviceId').value;
+        const id         = document.getElementById('terminalId').value;
+        const nombre     = document.getElementById('terminalNombre').value;
+        const terminalId = document.getElementById('terminalDeviceId').value;
 
-        const datos     = { nombre, deviceId };
+        const datos     = { nombre, terminalId };
         const resultado = id
             ? await this.terminalesManager.actualizar(id, datos)
             : await this.terminalesManager.agregar(datos);
@@ -1715,7 +1909,7 @@ class TiendaApp {
         // Renderizar sección de terminales
         this._actualizarVistaTerminales();
 
-        // Bindear el form de terminal
+        // Bindear el form de terminal (solo una vez)
         const formTerminal = document.getElementById('formTerminal');
         if (formTerminal && !formTerminal.dataset.bound) {
             formTerminal.dataset.bound = 'true';
