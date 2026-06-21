@@ -1,35 +1,29 @@
-// firebase-config.js - Configuración de Firebase
+// firebase-config.js - Configuración de Firebase (Sincronizado con Sistema Inventarios)
 
 const firebaseConfig = {
-  apiKey: "AIzaSyCqdr82zx0SxFTpba6DRO8eKnHkTlMOWX8",
-  authDomain: "inventario-tienda-f14b4.firebaseapp.com",
-  projectId: "inventario-tienda-f14b4",
-  storageBucket: "inventario-tienda-f14b4.firebasestorage.app",
-  messagingSenderId: "1000747147437",
-  appId: "1:1000747147437:web:6affdd55131bdaca702624"
+  apiKey: "AIzaSyBF2s_tR7kg_Tpr1LgWvPayesZR7ouP_t8",
+  authDomain: "sistema-inventarios-1609c.firebaseapp.com",
+  projectId: "sistema-inventarios-1609c",
+  storageBucket: "sistema-inventarios-1609c.firebasestorage.app",
+  messagingSenderId: "122614933440",
+  appId: "1:122614933440:web:2bd239c9be16b188a58a25"
 };
 
-// Inicializar Firebase
+// Inicializar Firebase utilizando la sintaxis tradicional (SDK v8) compatible con tu app
 firebase.initializeApp(firebaseConfig);
 
-// Referencias a servicios
+// Referencias globales a los servicios
 window.auth = firebase.auth();
 window.db   = firebase.firestore();
 
 // ─────────────────────────────────────────────────────────────
 // ESTADO GLOBAL DE LA CUENTA
-// window.currentUser       → usuario autenticado en Firebase Auth
-// window.cuentaAccesoTotal → booleano leído desde users/{uid}
-//                            true  = suscripción completa (tú lo activas)
-//                            false = suscripción básica (default)
 // ─────────────────────────────────────────────────────────────
 window.currentUser       = null;
-window.cuentaAccesoTotal = false;   // techo máximo de la cuenta
+window.cuentaAccesoTotal = false;   // Techo máximo de la cuenta
 
 // ─────────────────────────────────────────────────────────────
 // Lee el documento raíz de la cuenta y extrae el plan de suscripción.
-// Tú (el propietario del SaaS) controlas este campo directamente
-// en Firestore Console: users/{uid}  →  accesoTotal: true/false
 // ─────────────────────────────────────────────────────────────
 async function cargarSuscripcionCuenta(uid) {
   try {
@@ -39,14 +33,12 @@ async function cargarSuscripcionCuenta(uid) {
       const data = docSnap.data();
       // Plan Basic = false | Plan Pro = true
       window.cuentaAccesoTotal = data.accesoTotal === true;
-      // Limite de usuarios secundarios controlado desde Firestore Console
-      // Firestore: users/{uid} -> maxUsuarios: 3   (tú defines el número)
-      // Si no existe el campo, default conservador = 5
+      // Límite de usuarios secundarios controlado desde Firestore Console
       window.cuentaMaxUsuarios = typeof data.maxUsuarios === 'number'
         ? data.maxUsuarios
         : 5;
     } else {
-      // Documento aún no creado → crearlo con plan Basic por defecto
+      // Documento aún no creado en el nuevo proyecto → Crearlo con plan Basic por defecto
       await window.db.collection('users').doc(uid).set({
         accesoTotal: false,
         maxUsuarios: 5,
