@@ -1,38 +1,49 @@
 // storage.js - Módulo para manejo de datos en Firestore
+// ACTUALIZADO: Soporta multi-sucursal cuando window.sucursalActualId está definido
 
 export const StorageManager = {
-    // Obtener la colección del usuario actual
+
+    // ─── RESOLUCIÓN DE COLECCIÓN ─────────────────────────────────────────
+    // Si hay sucursal activa → users/{uid}/sucursales/{sucursalId}/{col}
+    // Si no               → users/{uid}/{col}  (legacy / sin sucursales)
+
     getUserCollection(collectionName) {
-        if (!window.currentUser) {
-            throw new Error('Usuario no autenticado');
+        if (!window.currentUser) throw new Error('Usuario no autenticado');
+
+        const sucursalId = window.sucursalActualId;
+
+        if (sucursalId) {
+            return window.db
+                .collection('users')
+                .doc(window.currentUser.uid)
+                .collection('sucursales')
+                .doc(sucursalId)
+                .collection(collectionName);
         }
-        return window.db.collection('users')
+
+        // Fallback: ruta original (compatibilidad)
+        return window.db
+            .collection('users')
             .doc(window.currentUser.uid)
             .collection(collectionName);
     },
 
-    // Guardar múltiples documentos (migración desde array)
+    // ─── CRUD ─────────────────────────────────────────────────────────────
+
     async saveAll(collectionName, data) {
         try {
             const collection = this.getUserCollection(collectionName);
-            const batch = window.db.batch();
-            
-            // Eliminar documentos existentes
-            const snapshot = await collection.get();
-            snapshot.docs.forEach(doc => {
-                batch.delete(doc.ref);
-            });
-            
-            // Agregar nuevos documentos
-            data.forEach((item) => {
+            const batch      = window.db.batch();
+            const snapshot   = await collection.get();
+            snapshot.docs.forEach(doc => batch.delete(doc.ref));
+            data.forEach(item => {
                 const docRef = collection.doc();
                 batch.set(docRef, {
                     ...item,
-                    id: docRef.id,
+                    id:        docRef.id,
                     updatedAt: firebase.firestore.FieldValue.serverTimestamp()
                 });
             });
-            
             await batch.commit();
             return true;
         } catch (error) {
@@ -41,32 +52,32 @@ export const StorageManager = {
         }
     },
 
-    // Cargar todos los documentos
     async loadAll(collectionName) {
         try {
             const collection = this.getUserCollection(collectionName);
-            const snapshot = await collection.orderBy('updatedAt', 'desc').get();
-            
-            return snapshot.docs.map(doc => ({
-                id: doc.id,
-                ...doc.data()
-            }));
+            const snapshot   = await collection.orderBy('updatedAt', 'desc').get();
+            return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         } catch (error) {
-            console.error('Error al cargar datos:', error);
-            return [];
+            // Fallback sin ordenar si no existe el índice
+            try {
+                const collection = this.getUserCollection(collectionName);
+                const snapshot   = await collection.get();
+                return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            } catch (e) {
+                console.error('Error al cargar datos:', e);
+                return [];
+            }
         }
     },
 
-    // Agregar un documento
     async add(collectionName, data) {
         try {
             const collection = this.getUserCollection(collectionName);
-            const docRef = await collection.add({
+            const docRef     = await collection.add({
                 ...data,
                 createdAt: firebase.firestore.FieldValue.serverTimestamp(),
                 updatedAt: firebase.firestore.FieldValue.serverTimestamp()
             });
-            
             return { success: true, id: docRef.id };
         } catch (error) {
             console.error('Error al agregar documento:', error);
@@ -74,7 +85,6 @@ export const StorageManager = {
         }
     },
 
-    // Actualizar un documento
     async update(collectionName, docId, data) {
         try {
             const collection = this.getUserCollection(collectionName);
@@ -82,7 +92,6 @@ export const StorageManager = {
                 ...data,
                 updatedAt: firebase.firestore.FieldValue.serverTimestamp()
             });
-            
             return { success: true };
         } catch (error) {
             console.error('Error al actualizar documento:', error);
@@ -90,12 +99,10 @@ export const StorageManager = {
         }
     },
 
-    // Eliminar un documento
     async delete(collectionName, docId) {
         try {
             const collection = this.getUserCollection(collectionName);
             await collection.doc(docId).delete();
-            
             return { success: true };
         } catch (error) {
             console.error('Error al eliminar documento:', error);
@@ -103,35 +110,25 @@ export const StorageManager = {
         }
     },
 
-    // Obtener un documento específico
     async getOne(collectionName, docId) {
         try {
             const collection = this.getUserCollection(collectionName);
-            const doc = await collection.doc(docId).get();
-            
-            if (doc.exists) {
-                return { id: doc.id, ...doc.data() };
-            }
-            return null;
+            const doc        = await collection.doc(docId).get();
+            return doc.exists ? { id: doc.id, ...doc.data() } : null;
         } catch (error) {
             console.error('Error al obtener documento:', error);
             return null;
         }
     },
 
-    // Escuchar cambios en tiempo real
     onSnapshot(collectionName, callback) {
         try {
             const collection = this.getUserCollection(collectionName);
             return collection.orderBy('updatedAt', 'desc').onSnapshot(
-                (snapshot) => {
-                    const data = snapshot.docs.map(doc => ({
-                        id: doc.id,
-                        ...doc.data()
-                    }));
-                    callback(data);
+                snapshot => {
+                    callback(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
                 },
-                (error) => {
+                error => {
                     console.error('Error en snapshot:', error);
                     callback([]);
                 }
@@ -142,21 +139,16 @@ export const StorageManager = {
         }
     },
 
-    // Migrar datos desde localStorage (útil para primera vez)
     async migrateFromLocalStorage() {
         if (!window.currentUser) return;
-
         const collections = ['productos', 'proveedores', 'ventas'];
-        
         for (const collectionName of collections) {
             try {
                 const localData = localStorage.getItem(collectionName);
                 if (localData) {
                     const data = JSON.parse(localData);
                     if (Array.isArray(data) && data.length > 0) {
-                        console.log(`Migrando ${collectionName}...`);
                         await this.saveAll(collectionName, data);
-                        console.log(`✓ ${collectionName} migrado exitosamente`);
                     }
                 }
             } catch (error) {
@@ -166,9 +158,11 @@ export const StorageManager = {
     }
 };
 
-// Claves para las colecciones
 export const STORAGE_KEYS = {
-    PRODUCTOS: 'productos',
-    PROVEEDORES: 'proveedores',
-    VENTAS: 'ventas'
+    PRODUCTOS:    'productos',
+    PROVEEDORES:  'proveedores',
+    VENTAS:       'ventas'
 };
+
+// Exponer referencia global para StorageSucursalManager
+window._storageManagerRef = { StorageManager };

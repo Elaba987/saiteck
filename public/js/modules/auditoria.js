@@ -1,8 +1,6 @@
 // auditoria.js - Módulo para registro de auditoría de operaciones CRUD
+// ACTUALIZADO: Etiqueta cada registro con el ID y nombre de la sucursal activa
 
-// ─────────────────────────────────────────────────────────────────────────────
-// CATÁLOGO DE TIPOS DE OPERACIÓN
-// ─────────────────────────────────────────────────────────────────────────────
 export const TIPOS_OPERACION = {
     // ── Productos ──
     PRODUCTO_CREAR:             { label: 'Creó producto',                  icono: '📦➕', categoria: 'Productos' },
@@ -16,7 +14,7 @@ export const TIPOS_OPERACION = {
     VENTA_CREAR:                { label: 'Realizó venta',                  icono: '💰✅', categoria: 'Ventas' },
     VENTA_TICKET_DESCARGADO:    { label: 'Descargó ticket de venta',       icono: '🎫📥', categoria: 'Ventas' },
 
-    // ── Pagos con tarjeta (Mercado Pago Orders API) ──
+    // ── Pagos con tarjeta ──
     PAGO_TARJETA_INICIADO:      { label: 'Inició cobro con tarjeta',       icono: '💳📡', categoria: 'Ventas' },
     PAGO_TARJETA_CONFIRMADO:    { label: 'Confirmó pago con tarjeta',      icono: '💳✅', categoria: 'Ventas' },
     PAGO_TARJETA_CANCELADO:     { label: 'Canceló cobro con tarjeta',      icono: '💳❌', categoria: 'Ventas' },
@@ -35,13 +33,13 @@ export const TIPOS_OPERACION = {
     PEDIDO_COMPLETAR:           { label: 'Completó pedido',                icono: '🛒✅', categoria: 'Pedidos' },
     PEDIDO_ELIMINAR:            { label: 'Eliminó pedido',                 icono: '🛒🗑️', categoria: 'Pedidos' },
 
-    // ── Terminales Mercado Pago ──
+    // ── Terminales ──
     TERMINAL_CREAR:             { label: 'Registró terminal MP',           icono: '🖥️➕', categoria: 'Terminales' },
     TERMINAL_EDITAR:            { label: 'Editó terminal MP',              icono: '🖥️✏️', categoria: 'Terminales' },
     TERMINAL_ELIMINAR:          { label: 'Eliminó terminal MP',            icono: '🖥️🗑️', categoria: 'Terminales' },
     TERMINAL_PDV_ACTIVADO:      { label: 'Activó modo PDV en terminal',    icono: '🖥️✅', categoria: 'Terminales' },
 
-    // ── Usuarios / Perfiles ──
+    // ── Usuarios ──
     USUARIO_CREAR:              { label: 'Creó usuario',                   icono: '👤➕', categoria: 'Usuarios' },
     USUARIO_EDITAR:             { label: 'Editó usuario',                  icono: '👤✏️', categoria: 'Usuarios' },
     USUARIO_ELIMINAR:           { label: 'Eliminó usuario',                icono: '👤🗑️', categoria: 'Usuarios' },
@@ -49,18 +47,23 @@ export const TIPOS_OPERACION = {
     SESION_INICIO:              { label: 'Inició sesión de perfil',        icono: '🔑✅', categoria: 'Sesión' },
     SESION_CIERRE:              { label: 'Cerró sesión de perfil',         icono: '🔑🚪', categoria: 'Sesión' },
 
+    // ── Sucursales ──
+    SUCURSAL_CREAR:             { label: 'Creó sucursal',                  icono: '🏪➕', categoria: 'Sucursales' },
+    SUCURSAL_EDITAR:            { label: 'Editó sucursal',                 icono: '🏪✏️', categoria: 'Sucursales' },
+    SUCURSAL_ELIMINAR:          { label: 'Desactivó sucursal',             icono: '🏪🗑️', categoria: 'Sucursales' },
+    SUCURSAL_SELECCION:         { label: 'Accedió a sucursal',             icono: '🏪🔑', categoria: 'Sucursales' },
+
     // ── Configuración ──
     CONFIG_COLORES:             { label: 'Cambió colores de la interfaz',  icono: '🎨✏️', categoria: 'Configuración' },
     CONFIG_COLORES_RESET:       { label: 'Restableció colores predeterminados', icono: '🎨↩️', categoria: 'Configuración' },
     CONFIG_META_VENTAS:         { label: 'Cambió meta de ventas diaria',   icono: '🎯✏️', categoria: 'Configuración' },
 };
 
-// Lista de categorías únicas (para filtros en la UI)
 export const CATEGORIAS_OPERACION = [
-    'Productos', 'Ventas', 'Proveedores', 'Pedidos', 'Terminales', 'Usuarios', 'Sesión', 'Configuración'
+    'Productos', 'Ventas', 'Proveedores', 'Pedidos', 'Terminales',
+    'Usuarios', 'Sesión', 'Sucursales', 'Configuración'
 ];
 
-// ─────────────────────────────────────────────────────────────────────────────
 export class AuditoriaManager {
     constructor() {
         this.registros   = [];
@@ -68,21 +71,21 @@ export class AuditoriaManager {
         this._habilitado = true;
     }
 
-    // ─── NÚCLEO: REGISTRAR UNA OPERACIÓN ──────────────────────────────────
+    // ─── REGISTRAR ────────────────────────────────────────────────────────
 
     async registrar(tipo, detalles = {}, usuario = null) {
-        if (!this._habilitado) return;
-        if (!window.currentUser) return;
+        if (!this._habilitado || !window.currentUser) return;
 
         const tipoInfo = TIPOS_OPERACION[tipo];
-        if (!tipoInfo) {
-            console.warn(`[Auditoría] Tipo desconocido: ${tipo}`);
-            return;
-        }
+        if (!tipoInfo) { console.warn(`[Auditoría] Tipo desconocido: ${tipo}`); return; }
 
         const u = usuario
             || window.appInstance?.usuariosManager?.obtenerUsuarioActual?.()
             || null;
+
+        // Etiqueta de sucursal
+        const sucursalId     = window.sucursalActualId || null;
+        const sucursalNombre = window.sucursalActualNombre || null;
 
         const registro = {
             tipo,
@@ -93,18 +96,19 @@ export class AuditoriaManager {
             usuario: u
                 ? { id: u.id, nombre: u.nombre, rol: u.rol }
                 : { id: 'system', nombre: 'Sistema', rol: 'sistema' },
-            fecha: new Date().toISOString()
+            fecha:        new Date().toISOString(),
+            _sucursalId:  sucursalId,
+            sucursalId,
+            sucursalNombre
         };
 
         try {
+            // Guardar SIEMPRE en la raíz del usuario (auditoría global)
             await window.db
                 .collection('users')
                 .doc(window.currentUser.uid)
                 .collection('auditoria')
-                .add({
-                    ...registro,
-                    createdAt: firebase.firestore.FieldValue.serverTimestamp()
-                });
+                .add({ ...registro, createdAt: firebase.firestore.FieldValue.serverTimestamp() });
         } catch (err) {
             console.error('[Auditoría] Error al registrar:', err);
         }
@@ -114,22 +118,19 @@ export class AuditoriaManager {
 
     async cargarRegistros(opciones = {}) {
         if (!window.currentUser) return [];
-
         try {
-            let query = window.db
-                .collection('users')
-                .doc(window.currentUser.uid)
+            const snap = await window.db
+                .collection('users').doc(window.currentUser.uid)
                 .collection('auditoria')
                 .orderBy('createdAt', 'desc')
-                .limit(opciones.limite || 1000);
+                .limit(opciones.limite || 2000)
+                .get();
 
-            const snapshot = await query.get();
-            this.registros = snapshot.docs.map(doc => ({
+            this.registros = snap.docs.map(doc => ({
                 id: doc.id,
                 ...doc.data(),
                 fecha: doc.data().createdAt?.toDate?.()?.toISOString() || doc.data().fecha
             }));
-
             return this.registros;
         } catch (err) {
             console.error('[Auditoría] Error al cargar registros:', err);
@@ -139,25 +140,21 @@ export class AuditoriaManager {
 
     iniciarEscucha(callback) {
         if (!window.currentUser) return () => {};
-
         try {
             const ref = window.db
-                .collection('users')
-                .doc(window.currentUser.uid)
+                .collection('users').doc(window.currentUser.uid)
                 .collection('auditoria')
                 .orderBy('createdAt', 'desc')
-                .limit(1000);
+                .limit(2000);
 
-            this.unsubscribe = ref.onSnapshot(snapshot => {
-                this.registros = snapshot.docs.map(doc => ({
+            this.unsubscribe = ref.onSnapshot(snap => {
+                this.registros = snap.docs.map(doc => ({
                     id: doc.id,
                     ...doc.data(),
                     fecha: doc.data().createdAt?.toDate?.()?.toISOString() || doc.data().fecha
                 }));
                 if (callback) callback(this.registros);
-            }, err => {
-                console.error('[Auditoría] Error en snapshot:', err);
-            });
+            }, err => console.error('[Auditoría] Error snapshot:', err));
 
             return this.unsubscribe;
         } catch (err) {
@@ -167,10 +164,7 @@ export class AuditoriaManager {
     }
 
     detenerEscucha() {
-        if (this.unsubscribe) {
-            this.unsubscribe();
-            this.unsubscribe = null;
-        }
+        if (this.unsubscribe) { this.unsubscribe(); this.unsubscribe = null; }
     }
 
     obtenerTodos() { return this.registros; }
@@ -181,13 +175,18 @@ export class AuditoriaManager {
         let resultado = [...this.registros];
         const ahora   = new Date();
 
-        if (filtros.periodo === 'dia') {
+        // Filtro de sucursal (para el panel normal, solo la actual)
+        if (filtros.soloSucursalActual && window.sucursalActualId) {
             resultado = resultado.filter(r =>
-                new Date(r.fecha).toDateString() === ahora.toDateString()
+                (r._sucursalId || r.sucursalId) === window.sucursalActualId
             );
+        }
+
+        // Filtros de periodo
+        if (filtros.periodo === 'dia') {
+            resultado = resultado.filter(r => new Date(r.fecha).toDateString() === ahora.toDateString());
         } else if (filtros.periodo === 'semana') {
-            const hace7 = new Date(ahora);
-            hace7.setDate(ahora.getDate() - 7);
+            const hace7 = new Date(ahora); hace7.setDate(ahora.getDate() - 7);
             resultado = resultado.filter(r => new Date(r.fecha) >= hace7);
         } else if (filtros.periodo === 'mes') {
             resultado = resultado.filter(r => {
@@ -195,31 +194,22 @@ export class AuditoriaManager {
                 return f.getMonth() === ahora.getMonth() && f.getFullYear() === ahora.getFullYear();
             });
         } else if (filtros.periodo === 'año') {
-            resultado = resultado.filter(r =>
-                new Date(r.fecha).getFullYear() === ahora.getFullYear()
-            );
+            resultado = resultado.filter(r => new Date(r.fecha).getFullYear() === ahora.getFullYear());
         } else if (filtros.periodo === 'fecha' && filtros.fechaEspecifica) {
             const objetivo = new Date(filtros.fechaEspecifica + 'T00:00:00');
-            resultado = resultado.filter(r =>
-                new Date(r.fecha).toDateString() === objetivo.toDateString()
-            );
+            resultado = resultado.filter(r => new Date(r.fecha).toDateString() === objetivo.toDateString());
         } else if (filtros.periodo === 'rango' && filtros.fechaInicio && filtros.fechaFin) {
             const ini = new Date(filtros.fechaInicio + 'T00:00:00');
             const fin = new Date(filtros.fechaFin   + 'T23:59:59');
-            resultado = resultado.filter(r => {
-                const f = new Date(r.fecha);
-                return f >= ini && f <= fin;
-            });
+            resultado = resultado.filter(r => { const f = new Date(r.fecha); return f >= ini && f <= fin; });
         }
 
         if (filtros.categorias?.length > 0) {
             resultado = resultado.filter(r => filtros.categorias.includes(r.categoria));
         }
-
         if (filtros.tipos?.length > 0) {
             resultado = resultado.filter(r => filtros.tipos.includes(r.tipo));
         }
-
         if (filtros.usuarioId) {
             resultado = resultado.filter(r => r.usuario?.id === filtros.usuarioId);
         }
@@ -231,13 +221,12 @@ export class AuditoriaManager {
 
     generarEstadisticas(registros) {
         const stats = {
-            total: registros.length,
+            total:          registros.length,
             porCategoria:   {},
             porUsuario:     {},
             porDia:         {},
             topOperaciones: []
         };
-
         const contadorTipos = {};
 
         registros.forEach(r => {
@@ -250,8 +239,7 @@ export class AuditoriaManager {
         });
 
         stats.topOperaciones = Object.entries(contadorTipos)
-            .sort((a, b) => b[1] - a[1])
-            .slice(0, 5)
+            .sort((a, b) => b[1] - a[1]).slice(0, 5)
             .map(([tipo, count]) => ({
                 tipo,
                 label: TIPOS_OPERACION[tipo]?.label || tipo,
@@ -265,15 +253,15 @@ export class AuditoriaManager {
     // ─── EXPORTAR CSV ─────────────────────────────────────────────────────
 
     exportarCSV(registros) {
-        const encabezado = ['Fecha', 'Hora', 'Usuario', 'Rol', 'Categoria', 'Operacion', 'Detalles'];
+        const encabezado = ['Fecha','Hora','Sucursal','Usuario','Rol','Categoria','Operacion','Detalles'];
         const filas = registros.map(r => {
             const fecha  = new Date(r.fecha);
             const detStr = Object.entries(r.detalles || {})
-                .map(([k, v]) => `${k}: ${v}`)
-                .join(' | ');
+                .map(([k, v]) => `${k}: ${v}`).join(' | ');
             return [
                 fecha.toLocaleDateString('es-MX'),
                 fecha.toLocaleTimeString('es-MX'),
+                r.sucursalNombre || '-',
                 r.usuario?.nombre || 'Sistema',
                 r.usuario?.rol    || '-',
                 r.categoria,
@@ -287,11 +275,9 @@ export class AuditoriaManager {
         const url  = URL.createObjectURL(blob);
         const a    = document.createElement('a');
         const hoy  = new Date();
-
         a.href     = url;
         a.download = `AUDITORIA_${hoy.getDate()}-${hoy.getMonth()+1}-${hoy.getFullYear()}.csv`;
-        document.body.appendChild(a);
-        a.click();
+        document.body.appendChild(a); a.click();
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
     }

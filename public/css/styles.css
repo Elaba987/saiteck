@@ -3560,3 +3560,538 @@ canvas {
         flex-direction: column;
     }
 }
+/* styles_sucursales.css — Estilos para el sistema multi-sucursal */
+
+/* ========================================
+   PANTALLA DE SELECCIÓN DE SUCURSAL
+   ======================================== */
+
+.sucursal-container {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    padding: 20px;
+    background: linear-gradient(135deg, var(--color-primario) 0%, var(--color-secundario) 100%);
+}
+
+.sucursal-card {
+    background: white;
+    border-radius: 24px;
+    padding: 50px 40px;
+    box-shadow: 0 25px 70px rgba(0,0,0,0.35);
+    max-width: 980px;
+    width: 100%;
+    animation: slideUp 0.4s ease-out;
+}
+
+.sucursal-header {
+    text-align: center;
+    margin-bottom: 40px;
+}
+
+.sucursal-header h2 {
+    color: var(--color-primario);
+    font-size: 32px;
+    font-weight: 700;
+    margin-bottom: 8px;
+}
+
+.sucursal-header .subtitle {
+    font-size: 15px;
+    color: #718096;
+}
+
+/* Grid de sucursales */
+.sucursales-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 22px;
+    margin-bottom: 40px;
+}
+
+.sucursal-card-item {
+    background: white;
+    border: 3px solid #e2e8f0;
+    padding: 30px 22px;
+    border-radius: 18px;
+    cursor: pointer;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+}
+
+.sucursal-card-item::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 5px;
+    background: linear-gradient(135deg, var(--color-primario) 0%, var(--color-secundario) 100%);
+    transform: scaleX(0);
+    transition: transform 0.3s ease;
+    transform-origin: left;
+}
+
+.sucursal-card-item:hover {
+    transform: translateY(-8px) scale(1.02);
+    border-color: var(--color-primario);
+    box-shadow: 0 15px 40px rgba(102, 126, 234, 0.3);
+}
+
+.sucursal-card-item:hover::before { transform: scaleX(1); }
+
+.sucursal-card-item.inactiva {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.sucursal-card-icon {
+    font-size: 52px;
+    margin-bottom: 16px;
+    display: block;
+}
+
+.sucursal-card-nombre {
+    font-size: 20px;
+    font-weight: 700;
+    color: #2d3748;
+    margin-bottom: 8px;
+}
+
+.sucursal-card-estado {
+    font-size: 12px;
+    font-weight: 700;
+    padding: 4px 12px;
+    border-radius: 20px;
+    display: inline-block;
+}
+
+.sucursal-card-estado.activa {
+    background: #edf7ed;
+    color: #276749;
+}
+
+.sucursal-card-estado.inactiva {
+    background: #fee2e2;
+    color: #c53030;
+}
+
+/* Botón Administrar (panel maestro) */
+.btn-administrar-maestro {
+    background: linear-gradient(135deg, #2d3748 0%, #1a202c 100%);
+    color: white;
+    border: none;
+    border-radius: 14px;
+    padding: 18px 36px;
+    font-size: 17px;
+    font-weight: 700;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    transition: all 0.25s;
+    box-shadow: 0 6px 20px rgba(45, 55, 72, 0.4);
+    letter-spacing: 0.3px;
+    width: 100%;
+    justify-content: center;
+    margin-top: 10px;
+}
+
+.btn-administrar-maestro:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 28px rgba(45, 55, 72, 0.5);
+    background: linear-gradient(135deg, #4a5568 0%, #2d3748 100%);
+}
+
+.btn-administrar-maestro .crown-icon {
+    font-size: 22px;
+}
+
+/* Footer sucursal */
+.sucursal-footer {
+    border-top: 2px solid #e2e8f0;
+    padding-top: 28px;
+    text-align: center;
+    margin-top: 10px;
+}
+
+/* Badge de sucursal en sidebar */
+.sucursal-badge-sidebar {
+    background: linear-gradient(135deg, var(--color-primario) 0%, var(--color-secundario) 100%);
+    border-radius: 8px;
+    padding: 8px 12px;
+    margin-bottom: 12px;
+    text-align: center;
+}
+
+.sucursal-badge-sidebar .suc-label {
+    display: block;
+    font-size: 10px;
+    color: rgba(255,255,255,0.7);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 3px;
+}
+
+.sucursal-badge-sidebar .suc-nombre {
+    display: block;
+    font-size: 14px;
+    font-weight: 700;
+    color: white;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* ========================================
+   MODAL NIP SUCURSAL
+   ======================================== */
+
+.sucursal-nip-modal {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.85);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 3000;
+    padding: 20px;
+}
+
+.sucursal-nip-modal:not(.hidden) { display: flex; }
+
+.sucursal-nip-card {
+    background: white;
+    border-radius: 20px;
+    padding: 40px;
+    max-width: 420px;
+    width: 100%;
+    text-align: center;
+    box-shadow: 0 25px 70px rgba(0,0,0,0.4);
+    animation: slideUp 0.3s ease-out;
+}
+
+/* ========================================
+   SUPER ADMIN — PANEL MAESTRO
+   ======================================== */
+
+.superadmin-wrapper {
+    max-width: 1200px;
+    margin: 0 auto;
+}
+
+.superadmin-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 16px;
+    margin-bottom: 24px;
+    padding-bottom: 20px;
+    border-bottom: 3px solid var(--color-primario);
+}
+
+.superadmin-header-left {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+
+.superadmin-icon {
+    font-size: 44px;
+    line-height: 1;
+}
+
+.superadmin-title {
+    font-size: 26px;
+    font-weight: 700;
+    color: #2d3748;
+    margin: 0;
+}
+
+.superadmin-subtitle {
+    font-size: 14px;
+    color: #718096;
+    margin: 4px 0 0;
+}
+
+.superadmin-nav {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.superadmin-nav-btn {
+    padding: 9px 18px;
+    border-radius: 10px;
+    border: 2px solid #e2e8f0;
+    background: white;
+    font-size: 14px;
+    font-weight: 600;
+    color: #4a5568;
+    cursor: pointer;
+    transition: all 0.2s;
+    white-space: nowrap;
+}
+
+.superadmin-nav-btn:hover {
+    border-color: var(--color-primario);
+    color: var(--color-primario);
+}
+
+.superadmin-nav-btn.active {
+    background: var(--color-primario);
+    border-color: var(--color-primario);
+    color: white;
+    box-shadow: 0 3px 10px rgba(102,126,234,0.35);
+}
+
+/* Filtros bar */
+.superadmin-filtros-bar {
+    background: white;
+    border-radius: 12px;
+    padding: 16px 20px;
+    margin-bottom: 20px;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.07);
+    display: flex;
+    gap: 16px;
+    align-items: flex-end;
+    flex-wrap: wrap;
+    border: 2px solid #e2e8f0;
+}
+
+.superadmin-filtro-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.superadmin-filtro-group label {
+    font-size: 12px;
+    font-weight: 700;
+    color: #718096;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+}
+
+.superadmin-filtro-group select {
+    padding: 8px 12px;
+    border: 2px solid #e2e8f0;
+    border-radius: 8px;
+    font-size: 14px;
+    color: #2d3748;
+    background: white;
+    cursor: pointer;
+    transition: border-color 0.2s;
+}
+
+.superadmin-filtro-group select:focus {
+    outline: none;
+    border-color: var(--color-primario);
+}
+
+/* Chips de sucursales en filtros */
+.superadmin-suc-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.sa-chip {
+    padding: 5px 12px;
+    border-radius: 18px;
+    border: 2px solid #e2e8f0;
+    background: white;
+    font-size: 12px;
+    font-weight: 600;
+    color: #4a5568;
+    cursor: pointer;
+    transition: all 0.18s;
+    white-space: nowrap;
+}
+
+.sa-chip:hover {
+    border-color: var(--color-primario);
+    color: var(--color-primario);
+}
+
+.sa-chip.active {
+    background: var(--color-primario);
+    border-color: var(--color-primario);
+    color: white;
+}
+
+/* Contenido */
+.superadmin-contenido {
+    min-height: 300px;
+}
+
+/* KPIs */
+.sa-kpis-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 16px;
+    margin-bottom: 20px;
+}
+
+.sa-kpi-card {
+    background: white;
+    border: 2px solid #e2e8f0;
+    border-radius: 14px;
+    padding: 20px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    transition: all 0.2s;
+}
+
+.sa-kpi-card:hover {
+    border-color: var(--color-primario);
+    box-shadow: 0 4px 16px rgba(102,126,234,0.12);
+}
+
+.sa-kpi-card.sa-kpi-primary {
+    background: linear-gradient(135deg, var(--color-primario) 0%, var(--color-secundario) 100%);
+    border-color: transparent;
+    color: white;
+}
+
+.sa-kpi-card.sa-kpi-success {
+    background: linear-gradient(135deg, #48bb78 0%, #38a169 100%);
+    border-color: transparent;
+    color: white;
+}
+
+.sa-kpi-icon {
+    font-size: 30px;
+    line-height: 1;
+    flex-shrink: 0;
+}
+
+.sa-kpi-value {
+    font-size: 24px;
+    font-weight: 800;
+    line-height: 1.1;
+}
+
+.sa-kpi-label {
+    font-size: 12px;
+    font-weight: 600;
+    margin-top: 3px;
+    opacity: 0.85;
+}
+
+.sa-kpi-card:not(.sa-kpi-primary):not(.sa-kpi-success) .sa-kpi-value { color: #2d3748; }
+.sa-kpi-card:not(.sa-kpi-primary):not(.sa-kpi-success) .sa-kpi-label { color: #718096; }
+
+/* Sección card */
+.sa-section-card {
+    background: white;
+    border-radius: 14px;
+    padding: 24px;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.07);
+    border: 2px solid #e2e8f0;
+    margin-bottom: 20px;
+}
+
+/* ========================================
+   MODAL SUCURSAL (crear/editar)
+   ======================================== */
+
+.modal-sucursal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.7);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 2800;
+    padding: 20px;
+}
+
+.modal-sucursal-overlay:not(.hidden) { display: flex; }
+
+.modal-sucursal-card {
+    background: white;
+    border-radius: 18px;
+    padding: 32px 28px;
+    max-width: 460px;
+    width: 100%;
+    box-shadow: 0 24px 64px rgba(0,0,0,0.28);
+    animation: slideUp 0.28s cubic-bezier(0.34,1.56,0.64,1);
+}
+
+.modal-sucursal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 24px;
+    padding-bottom: 16px;
+    border-bottom: 2px solid #e2e8f0;
+}
+
+.modal-sucursal-title {
+    font-size: 20px;
+    font-weight: 700;
+    color: #1a202c;
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+/* ========================================
+   RESPONSIVE
+   ======================================== */
+
+@media (max-width: 768px) {
+    .sucursal-card {
+        padding: 36px 22px;
+    }
+
+    .sucursales-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .superadmin-header {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .superadmin-nav {
+        width: 100%;
+    }
+
+    .superadmin-nav-btn {
+        flex: 1;
+        text-align: center;
+        padding: 8px 10px;
+        font-size: 12px;
+    }
+
+    .superadmin-filtros-bar {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .sa-kpis-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+@media (max-width: 480px) {
+    .sucursal-card {
+        padding: 28px 16px;
+    }
+
+    .sa-kpis-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .superadmin-nav-btn {
+        font-size: 11px;
+        padding: 7px 8px;
+    }
+}

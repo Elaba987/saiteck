@@ -1,4 +1,5 @@
 // ui.js - Módulo para manejo de la interfaz de usuario
+// ACTUALIZADO: Agrega ítem de menú superadmin
 
 export class UIManager {
     constructor() {
@@ -12,19 +13,15 @@ export class UIManager {
             contenedor.innerHTML = `
                 <div class="loading" style="grid-column: 1 / -1;">
                     Cargando datos...
-                </div>
-            `;
+                </div>`;
         }
     }
 
-    ocultarCargando() {
-        // Se eliminará automáticamente al actualizar el contenido
-    }
+    ocultarCargando() {}
 
     // === NAVEGACIÓN ===
     mostrarSeccion(seccionId) {
-        // La sección de administración no requiere permiso granular, se controla en app.js
-        if (seccionId !== 'administracion') {
+        if (seccionId !== 'administracion' && seccionId !== 'superadmin') {
             if (window.appInstance && window.appInstance.usuariosManager) {
                 const usuarioActual = window.appInstance.usuariosManager.obtenerUsuarioActual();
                 if (usuarioActual && !window.appInstance.usuariosManager.tienePermiso(seccionId)) {
@@ -44,7 +41,6 @@ export class UIManager {
         }
         this.actualizarMenuActivo(seccionId);
 
-        // Auto-focus en clave al entrar a ventas (soporte lector de código de barras)
         if (seccionId === 'ventas') {
             setTimeout(() => {
                 const claveInput = document.getElementById('buscarClaveVenta');
@@ -52,13 +48,17 @@ export class UIManager {
             }, 100);
         }
 
-        // Si se accede a configuración, actualizar datos
         if (seccionId === 'configuracion' && window.configuracionManager) {
             window.configuracionManager.actualizarEmailUsuario();
             window.configuracionManager.cargarColoresDesdeFirestore();
-
-            if (window.appInstance && window.appInstance.actualizarInfoUsuarioEnConfiguracion) {
+            window.configuracionManager.actualizarInputNombreSucursal?.();
+            if (window.appInstance?.actualizarInfoUsuarioEnConfiguracion) {
                 window.appInstance.actualizarInfoUsuarioEnConfiguracion();
+            }
+            // Mostrar/ocultar sección de nombre de sucursal
+            const secNombre = document.getElementById('seccionNombreSucursal');
+            if (secNombre) {
+                secNombre.style.display = window.sucursalActualId ? 'block' : 'none';
             }
         }
     }
@@ -78,40 +78,42 @@ export class UIManager {
         if (!contenedor) return;
         const clase = tipo === 'success' ? 'alert-success' : 'alert-danger';
         contenedor.innerHTML = `<div class="alert ${clase}">${mensaje}</div>`;
-        setTimeout(() => {
-            contenedor.innerHTML = '';
-        }, 3000);
+        setTimeout(() => { contenedor.innerHTML = ''; }, 3000);
     }
 
-    confirmar(mensaje) {
-        return window.confirm(mensaje);
-    }
-
-    prompt(mensaje, valorDefault = '') {
-        return window.prompt(mensaje, valorDefault);
-    }
-
-    alerta(mensaje) {
-        window.alert(mensaje);
-    }
+    confirmar(mensaje) { return window.confirm(mensaje); }
+    prompt(mensaje, valorDefault = '') { return window.prompt(mensaje, valorDefault); }
+    alerta(mensaje) { window.alert(mensaje); }
 
     // === RENDERIZADO DE MENÚ ===
     renderizarMenu(contenedor) {
-        const menuItems = [
-            { id: 'dashboard',      icono: '📊', texto: 'Dashboard' },
-            { id: 'productos',      icono: '📦', texto: 'Productos' },
-            { id: 'ventas',         icono: '💰', texto: 'Realizar Venta' },
-            { id: 'proveedores',    icono: '🚚', texto: 'Proveedores' },
-            { id: 'reportes',       icono: '📈', texto: 'Reportes' },
-            { id: 'administracion', icono: '🛡️', texto: 'Administración' },
-            { id: 'configuracion',  icono: '⚙️', texto: 'Configuración' }
-        ];
-        const html = menuItems.map(item => `
-            <div class="menu-item ${item.id === 'dashboard' ? 'active' : ''}" data-section="${item.id}">
+        if (!contenedor) return;
+
+        // Si no hay sucursal activa → modo super admin, menú reducido
+        const esSuperAdmin = !window.sucursalActualId;
+
+        const menuItems = esSuperAdmin
+            ? [
+                { id: 'superadmin',    icono: '👑', texto: 'Panel Maestro' },
+                { id: 'configuracion', icono: '⚙️', texto: 'Configuración' }
+              ]
+            : [
+                { id: 'dashboard',      icono: '📊', texto: 'Dashboard' },
+                { id: 'productos',      icono: '📦', texto: 'Productos' },
+                { id: 'ventas',         icono: '💰', texto: 'Realizar Venta' },
+                { id: 'proveedores',    icono: '🚚', texto: 'Proveedores' },
+                { id: 'reportes',       icono: '📈', texto: 'Reportes' },
+                { id: 'administracion', icono: '🛡️', texto: 'Administración' },
+                { id: 'configuracion',  icono: '⚙️', texto: 'Configuración' }
+              ];
+
+        const defaultSection = esSuperAdmin ? 'superadmin' : 'dashboard';
+
+        contenedor.innerHTML = menuItems.map(item => `
+            <div class="menu-item ${item.id === defaultSection ? 'active' : ''}"
+                 data-section="${item.id}">
                 ${item.icono} ${item.texto}
-            </div>
-        `).join('');
-        contenedor.innerHTML = html;
+            </div>`).join('');
     }
 
     // === RENDERIZADO DE PRODUCTOS ===
@@ -121,7 +123,7 @@ export class UIManager {
         const tienePermisoEditar   = window.appInstance?.usuariosManager.tienePermiso('productos_editar')   || false;
         const tienePermisoEliminar = window.appInstance?.usuariosManager.tienePermiso('productos_eliminar') || false;
 
-        tbody.innerHTML = productos.map((producto) => {
+        tbody.innerHTML = productos.map(producto => {
             const stockTexto  = producto.esGranel
                 ? `${parseFloat(producto.stock).toFixed(3)} kg`
                 : producto.stock;
@@ -145,8 +147,7 @@ export class UIManager {
                         ${tienePermisoEliminar ? `<button class="btn btn-danger"   data-accion="eliminar" data-id="${producto.id}">🗑️ Eliminar</button>` : ''}
                         ${!tienePermisoEditar && !tienePermisoEliminar ? '<span style="color:#718096;font-size:13px;">Sin permisos</span>' : ''}
                     </td>
-                </tr>
-            `;
+                </tr>`;
         }).join('');
     }
 
@@ -168,9 +169,9 @@ export class UIManager {
         if (!contenedor) return;
 
         if (producto.esGranel) {
-            const kgEnCarrito     = stockEnCarrito / 1000;
-            const kgDisponible    = producto.stock - kgEnCarrito;
-            const stockBajo       = kgDisponible < 0.5;
+            const kgEnCarrito  = stockEnCarrito / 1000;
+            const kgDisponible = producto.stock - kgEnCarrito;
+            const stockBajo    = kgDisponible < 0.5;
 
             contenedor.innerHTML = `
                 <div style="background:#f0f4ff;padding:15px;border-radius:8px;margin:15px 0;border-left:4px solid #667eea;">
@@ -179,8 +180,7 @@ export class UIManager {
                     Precio: <strong>$${producto.precioVenta.toFixed(2)}/kg</strong><br>
                     Stock disponible: <span class="${stockBajo ? 'low-stock' : ''}">${kgDisponible.toFixed(3)} kg</span>
                     ${kgEnCarrito > 0 ? `<br><small>(${(kgEnCarrito * 1000).toFixed(0)}g ya en carrito)</small>` : ''}
-                </div>
-            `;
+                </div>`;
         } else {
             const stockDisponible = producto.stock - stockEnCarrito;
             contenedor.innerHTML = `
@@ -189,18 +189,14 @@ export class UIManager {
                     Precio: $${producto.precioVenta.toFixed(2)}<br>
                     Stock disponible: <span class="${stockDisponible < 5 ? 'low-stock' : ''}">${stockDisponible}</span>
                     ${stockEnCarrito > 0 ? `<br><small>(${stockEnCarrito} ya en carrito)</small>` : ''}
-                </div>
-            `;
+                </div>`;
         }
     }
 
     // === RENDERIZADO DE LISTA DE VENTA ACTUAL ===
     renderizarListaVenta(items, contenedor) {
         if (!contenedor) return;
-        if (items.length === 0) {
-            contenedor.innerHTML = '';
-            return;
-        }
+        if (items.length === 0) { contenedor.innerHTML = ''; return; }
 
         const html = '<h4>Productos en la venta:</h4>' + items.map((item, index) => {
             if (item.esGranel) {
@@ -219,10 +215,8 @@ export class UIManager {
                             <button class="btn btn-danger" style="margin-top:8px;font-size:14px;padding:8px 16px;"
                                 onclick="window.appInstance.eliminarDelCarrito(${index})">🗑️ Quitar</button>
                         </div>
-                    </div>
-                `;
+                    </div>`;
             }
-
             return `
                 <div class="venta-item">
                     <div style="flex:1;">
@@ -241,8 +235,7 @@ export class UIManager {
                         <button class="btn btn-danger" style="margin-top:8px;font-size:14px;padding:8px 16px;"
                             onclick="window.appInstance.eliminarDelCarrito(${index})">🗑️ Quitar</button>
                     </div>
-                </div>
-            `;
+                </div>`;
         }).join('');
 
         contenedor.innerHTML = html;
@@ -250,9 +243,7 @@ export class UIManager {
 
     // === ACTUALIZAR TOTAL DE VENTA ===
     actualizarTotalVenta(total, elemento) {
-        if (elemento) {
-            elemento.textContent = total.toFixed(2);
-        }
+        if (elemento) elemento.textContent = total.toFixed(2);
     }
 
     // === RENDERIZADO DE PROVEEDORES ===
@@ -262,33 +253,30 @@ export class UIManager {
         const tienePermisoEditar   = window.appInstance?.usuariosManager.tienePermiso('proveedores_editar')   || false;
         const tienePermisoEliminar = window.appInstance?.usuariosManager.tienePermiso('proveedores_eliminar') || false;
 
-        tbody.innerHTML = proveedores.map((proveedor) => {
+        tbody.innerHTML = proveedores.map(proveedor => {
             const esHoy = proveedoresManager.esVisitaHoy(proveedor.fechaVisita);
             const [año, mes, dia] = proveedor.fechaVisita.split('-').map(Number);
             const fecha = new Date(año, mes - 1, dia);
             const estiloFecha = esHoy ? 'font-weight:bold;color:var(--color-primario);' : '';
+
             let infoReparto = '';
-            if (proveedor.tipoReparto === 'constante' && proveedor.diasReparto && proveedor.diasReparto.length > 0) {
-                const nombresDias = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
-                const diasTexto = proveedor.diasReparto.sort((a,b)=>a-b).map(d=>nombresDias[d]).join(', ');
-                const frecuencia = proveedor.frecuenciaReparto || 1;
+            if (proveedor.tipoReparto === 'constante' && proveedor.diasReparto?.length > 0) {
+                const nombresDias  = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
+                const diasTexto    = proveedor.diasReparto.sort((a,b)=>a-b).map(d=>nombresDias[d]).join(', ');
+                const frecuencia   = proveedor.frecuenciaReparto || 1;
                 let textoFrecuencia = 'Semanal';
                 if (frecuencia === 2) textoFrecuencia = 'Quincenal';
                 else if (frecuencia === 3) textoFrecuencia = 'Cada 3 semanas';
                 infoReparto = `<div style="background:#e6f0ff;padding:5px 10px;border-radius:5px;margin-top:5px;font-size:12px;">
-                    🔄 <strong>${textoFrecuencia}:</strong> ${diasTexto}
-                </div>`;
+                    🔄 <strong>${textoFrecuencia}:</strong> ${diasTexto}</div>`;
             } else {
                 infoReparto = `<div style="background:#f0f0f0;padding:5px 10px;border-radius:5px;margin-top:5px;font-size:12px;">
-                    📅 <strong>Fecha fija</strong>
-                </div>`;
+                    📅 <strong>Fecha fija</strong></div>`;
             }
+
             return `
                 <tr ${proveedor.visitaRealizada ? 'style="opacity:0.6;"' : ''}>
-                    <td>
-                        <strong>${proveedor.nombre}</strong>
-                        ${infoReparto}
-                    </td>
+                    <td><strong>${proveedor.nombre}</strong>${infoReparto}</td>
                     <td>${proveedor.telefono || '-'}</td>
                     <td>${proveedor.email || '-'}</td>
                     <td style="${estiloFecha}">
@@ -297,14 +285,11 @@ export class UIManager {
                     <td>
                         ${!proveedor.visitaRealizada
                             ? `<button class="btn btn-success" data-accion="marcar-visita" data-id="${proveedor.id}">✓ Marcar</button>`
-                            : '<span style="color:#48bb78;font-weight:bold;">✓ Visitado</span>'
-                        }
+                            : '<span style="color:#48bb78;font-weight:bold;">✓ Visitado</span>'}
                         ${tienePermisoEditar   ? `<button class="btn btn-primary"  data-accion="editar-proveedor"   data-id="${proveedor.id}">✏️ Editar</button>`   : ''}
                         ${tienePermisoEliminar ? `<button class="btn btn-danger"   data-accion="eliminar-proveedor" data-id="${proveedor.id}">🗑️ Eliminar</button>` : ''}
-                        ${!tienePermisoEditar && !tienePermisoEliminar && proveedor.visitaRealizada ? '<span style="color:#718096;font-size:13px;">Sin permisos</span>' : ''}
                     </td>
-                </tr>
-            `;
+                </tr>`;
         }).join('');
     }
 
@@ -338,8 +323,7 @@ export class UIManager {
                     <div class="stat-value">$${reporte.ganancia.toFixed(2)}</div>
                     <small>${porcentajeGanancia}% de margen</small>
                 </div>
-            </div>
-        `;
+            </div>`;
 
         const htmlGrafico = puedeGenerarRep && reporte.ventas.length > 0 ? `
             <div style="background:white;padding:25px;border-radius:12px;margin:20px 0;box-shadow:0 4px 12px rgba(0,0,0,0.1);">
@@ -350,12 +334,10 @@ export class UIManager {
                 <div id="contenedorGrafico" style="min-height:300px;display:flex;align-items:center;justify-content:center;">
                     <canvas id="graficoComparativo"></canvas>
                 </div>
-            </div>
-        ` : !puedeGenerarRep ? `
+            </div>` : !puedeGenerarRep ? `
             <div class="alert alert-danger" style="margin:20px 0;">
                 🔒 No tienes permiso para generar reportes estadísticos.
-            </div>
-        ` : '';
+            </div>` : '';
 
         const htmlRanking = puedeGenerarRep && reporte.ventas.length > 0 ? `
             <div style="margin:20px 0;">
@@ -371,8 +353,7 @@ export class UIManager {
                     </select>
                 </div>
                 <div id="tablaRankingProductos"></div>
-            </div>
-        ` : '';
+            </div>` : '';
 
         const htmlTickets = puedeVerVentas ? `
             <div id="seccionTickets">
@@ -381,17 +362,13 @@ export class UIManager {
                     <table>
                         <thead>
                             <tr>
-                                <th>Ticket</th>
-                                <th>Fecha</th>
-                                <th>Usuario</th>
-                                <th>Productos</th>
-                                <th>Total</th>
-                                <th>Acciones</th>
+                                <th>Ticket</th><th>Fecha</th><th>Usuario</th>
+                                <th>Productos</th><th>Total</th><th>Acciones</th>
                             </tr>
                         </thead>
                         <tbody>
-                            ${reporte.ventas.map((venta) => {
-                                const numeroTicket = ventas.indexOf(venta) + 1;
+                            ${reporte.ventas.map(venta => {
+                                const numeroTicket  = ventas.indexOf(venta) + 1;
                                 const usuarioNombre = venta.usuario?.nombre || 'Sistema';
                                 const usuarioRol    = venta.usuario?.rol    || 'sistema';
                                 const iconoRol = usuarioRol === 'administrador' ? '👑' : '👤';
@@ -413,18 +390,14 @@ export class UIManager {
                                                 📥 Descargar Ticket
                                             </button>
                                         </td>
-                                    </tr>
-                                `;
+                                    </tr>`;
                             }).join('')}
                         </tbody>
-                    </table>
-                ` : '<p style="text-align:center;padding:20px;">No hay ventas para mostrar</p>'}
-            </div>
-        ` : `
+                    </table>` : '<p style="text-align:center;padding:20px;">No hay ventas para mostrar</p>'}
+            </div>` : `
             <div class="alert alert-danger" style="margin:20px 0;">
                 🔒 No tienes permiso para ver el historial de ventas y tickets.
-            </div>
-        `;
+            </div>`;
 
         contenedor.innerHTML = htmlStats + htmlGrafico + htmlRanking + htmlTickets;
 
@@ -433,23 +406,19 @@ export class UIManager {
         }
     }
 
-    // === RENDERIZAR RANKING DE PRODUCTOS ===
+    // === RENDERIZAR RANKING ===
     renderizarRankingProductos(productos, contenedor) {
         if (!contenedor) return;
         if (productos.length === 0) {
             contenedor.innerHTML = '<p style="text-align:center;padding:20px;">No hay datos de productos vendidos</p>';
             return;
         }
-        const html = `
+        contenedor.innerHTML = `
             <table style="margin-top:15px;">
                 <thead>
                     <tr>
-                        <th>Posición</th>
-                        <th>Producto</th>
-                        <th>Cantidad Vendida</th>
-                        <th>Total Ventas</th>
-                        <th>Total Costos</th>
-                        <th>Ganancia</th>
+                        <th>Posición</th><th>Producto</th><th>Cantidad Vendida</th>
+                        <th>Total Ventas</th><th>Total Costos</th><th>Ganancia</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -463,15 +432,12 @@ export class UIManager {
                             <td style="color:${producto.ganancia >= 0 ? '#48bb78' : '#f56565'};font-weight:bold;">
                                 $${producto.ganancia.toFixed(2)}
                             </td>
-                        </tr>
-                    `).join('')}
+                        </tr>`).join('')}
                 </tbody>
-            </table>
-        `;
-        contenedor.innerHTML = html;
+            </table>`;
     }
 
-    // === DIBUJAR GRÁFICO COMPARATIVO ===
+    // === GRÁFICOS ===
     dibujarGraficoComparativo(reporte, tipo = 'barras') {
         const canvas = document.getElementById('graficoComparativo');
         if (!canvas) return;
@@ -482,16 +448,17 @@ export class UIManager {
             this.dibujarGraficoBarrasHorizontal(canvas, reporte);
         } else if (tipo === 'pastel') {
             const size = Math.min(contenedor.offsetWidth - 50, 500);
-            canvas.width  = size;
-            canvas.height = size;
+            canvas.width = size; canvas.height = size;
             this.dibujarGraficoPastel(canvas, reporte);
         }
     }
 
     dibujarGraficoBarrasHorizontal(canvas, reporte) {
-        const ctx = canvas.getContext('2d');
-        const width = canvas.width, height = canvas.height;
+        const ctx    = canvas.getContext('2d');
+        const width  = canvas.width;
+        const height = canvas.height;
         ctx.clearRect(0, 0, width, height);
+
         const margenIzq = 150, margenDer = 120, margenTop = 40;
         const alturaBarra = 60, espacioEntreBarra = 30;
         const anchoDisponible = width - margenIzq - margenDer;
@@ -532,12 +499,14 @@ export class UIManager {
     }
 
     dibujarGraficoPastel(canvas, reporte) {
-        const ctx = canvas.getContext('2d');
-        const width = canvas.width, height = canvas.height;
+        const ctx    = canvas.getContext('2d');
+        const width  = canvas.width;
+        const height = canvas.height;
         ctx.clearRect(0, 0, width, height);
+
         const centerX = width / 2, centerY = height / 2;
-        const radius = Math.min(width, height) / 2.8;
-        const total = reporte.totalVentas;
+        const radius  = Math.min(width, height) / 2.8;
+        const total   = reporte.totalVentas;
 
         if (total === 0 || !isFinite(total)) {
             ctx.fillStyle = '#718096'; ctx.font = '18px Arial'; ctx.textAlign = 'center';
@@ -547,12 +516,13 @@ export class UIManager {
 
         const costoAngulo    = (reporte.totalCostos / total) * 2 * Math.PI;
         const gananciaAngulo = (reporte.ganancia    / total) * 2 * Math.PI;
-        let currentAngle = -Math.PI / 2;
+        let currentAngle     = -Math.PI / 2;
 
+        // Costos
         ctx.beginPath(); ctx.moveTo(centerX, centerY);
         ctx.arc(centerX, centerY, radius, currentAngle, currentAngle + costoAngulo); ctx.closePath();
         const gradC = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, radius);
-        gradC.addColorStop(0, '#ff8a80'); gradC.addColorStop(1, getComputedStyle(document.documentElement).getPropertyValue('--color-peligro').trim() || '#f56565');
+        gradC.addColorStop(0, '#ff8a80'); gradC.addColorStop(1, '#f56565');
         ctx.fillStyle = gradC; ctx.fill(); ctx.strokeStyle = '#fff'; ctx.lineWidth = 3; ctx.stroke();
         const cMid = currentAngle + costoAngulo / 2;
         ctx.fillStyle = '#fff'; ctx.font = 'bold 16px Arial'; ctx.textAlign = 'center';
@@ -560,22 +530,19 @@ export class UIManager {
         ctx.fillText('Costos', centerX + Math.cos(cMid) * (radius * 0.65), centerY + Math.sin(cMid) * (radius * 0.65) - 10);
         ctx.font = 'bold 14px Arial';
         ctx.fillText(`${((reporte.totalCostos / total) * 100).toFixed(1)}%`, centerX + Math.cos(cMid) * (radius * 0.65), centerY + Math.sin(cMid) * (radius * 0.65) + 8);
-        ctx.font = '12px Arial';
-        ctx.fillText(`$${reporte.totalCostos.toFixed(2)}`, centerX + Math.cos(cMid) * (radius * 0.65), centerY + Math.sin(cMid) * (radius * 0.65) + 24);
         ctx.shadowBlur = 0; currentAngle += costoAngulo;
 
+        // Ganancia
         ctx.beginPath(); ctx.moveTo(centerX, centerY);
         ctx.arc(centerX, centerY, radius, currentAngle, currentAngle + gananciaAngulo); ctx.closePath();
         const gradG = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, radius);
-        gradG.addColorStop(0, '#81e6d9'); gradG.addColorStop(1, getComputedStyle(document.documentElement).getPropertyValue('--color-exito').trim() || '#48bb78');
+        gradG.addColorStop(0, '#81e6d9'); gradG.addColorStop(1, '#48bb78');
         ctx.fillStyle = gradG; ctx.fill(); ctx.strokeStyle = '#fff'; ctx.lineWidth = 3; ctx.stroke();
         const gMid = currentAngle + gananciaAngulo / 2;
         ctx.fillStyle = '#fff'; ctx.font = 'bold 16px Arial'; ctx.shadowColor = 'rgba(0,0,0,0.5)'; ctx.shadowBlur = 4;
         ctx.fillText('Ganancia', centerX + Math.cos(gMid) * (radius * 0.65), centerY + Math.sin(gMid) * (radius * 0.65) - 10);
         ctx.font = 'bold 14px Arial';
         ctx.fillText(`${((reporte.ganancia / total) * 100).toFixed(1)}%`, centerX + Math.cos(gMid) * (radius * 0.65), centerY + Math.sin(gMid) * (radius * 0.65) + 8);
-        ctx.font = '12px Arial';
-        ctx.fillText(`$${reporte.ganancia.toFixed(2)}`, centerX + Math.cos(gMid) * (radius * 0.65), centerY + Math.sin(gMid) * (radius * 0.65) + 24);
         ctx.shadowBlur = 0;
 
         ctx.fillStyle = '#2d3748'; ctx.font = 'bold 20px Arial'; ctx.textAlign = 'center';

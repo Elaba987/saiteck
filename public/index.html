@@ -13,6 +13,7 @@
     <link rel="stylesheet" href="css/styles.css">
     <link rel="stylesheet" href="css/styles_additions.css">
     <link rel="stylesheet" href="css/styles_mp.css">
+    <link rel="stylesheet" href="css/styles_sucursales.css">
 </head>
 <body>
 
@@ -21,7 +22,8 @@
     ═══════════════════════════════════════════════════════ -->
     <div id="authContainer" class="auth-container">
         <div class="auth-card">
-            <img src="img/logo_saiteck.png" alt="SaiTeck" style="height:280px;object-fit:contain;margin:0 auto 16px;display:block;">
+            <img src="img/logo_saiteck.png" alt="SaiTeck"
+                 style="height:280px;object-fit:contain;margin:0 auto 16px;display:block;">
             <p class="subtitle">Sistema de Administración de Inventarios y Venta</p>
 
             <form id="loginForm" class="auth-form">
@@ -48,15 +50,59 @@
     </div>
 
     <!-- ═══════════════════════════════════════════════════════
+         PANTALLA DE SELECCIÓN DE SUCURSAL  ← NUEVA
+    ═══════════════════════════════════════════════════════ -->
+    <div id="sucursalContainer" class="sucursal-container hidden">
+        <div class="sucursal-card">
+
+            <div class="sucursal-header">
+                <img src="img/logo_saiteck.png" alt="SaiTeck"
+                     style="height:200px;object-fit:contain;display:block;margin:0 auto 16px;">
+                <h2>SaiTeck</h2>
+                <p class="subtitle">Selecciona una sucursal para continuar</p>
+            </div>
+
+            <!-- Grid de sucursales (inyectado por JS) -->
+            <div id="sucursalesList" class="sucursales-grid"></div>
+
+            <!-- Separador -->
+            <div style="border-top:2px solid #e2e8f0;margin:24px 0 20px;"></div>
+
+            <!-- Botón panel maestro (solo cuentas Pro) -->
+            <div id="btnAdministrarWrapper" style="margin-bottom:20px;">
+                <button id="btnPanelMaestro" class="btn-administrar-maestro">
+                    <span class="crown-icon">👑</span>
+                    Administrar — Panel Maestro
+                    <span style="font-size:12px;opacity:0.8;margin-left:4px;">(NIP del administrador)</span>
+                </button>
+            </div>
+
+            <div class="sucursal-footer">
+                <p style="color:#718096;font-size:14px;margin-bottom:16px;">
+                    <span id="sucursalUserEmail" style="color:#4a5568;font-weight:600;"></span>
+                </p>
+                <button id="btnLogoutFromSucursales" class="btn btn-secondary btn-block">
+                    🚪 Cerrar Sesión
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════
          PANTALLA DE SELECCIÓN DE PERFIL
     ═══════════════════════════════════════════════════════ -->
     <div id="profileContainer" class="profile-container hidden">
         <div class="profile-selection-card">
             <div class="profile-header">
                 <img src="img/logo_saiteck.png" alt="SaiTeck" class="profile-logo"
-                     style="height:250px;object-fit:contain;display:block;margin:0 auto;">
+                     style="height:200px;object-fit:contain;display:block;margin:0 auto;">
                 <h2>SaiTeck</h2>
-                <p class="subtitle">Selecciona tu perfil para continuar</p>
+                <!-- Badge de sucursal activa -->
+                <div id="profileSucursalBadge"
+                     style="display:none;background:linear-gradient(135deg,var(--color-primario),var(--color-secundario));
+                            color:white;padding:6px 18px;border-radius:20px;font-size:14px;
+                            font-weight:700;margin:10px auto 0;display:inline-block;"></div>
+                <p class="subtitle" style="margin-top:10px;">Selecciona tu perfil para continuar</p>
             </div>
 
             <div id="profilesList" class="profiles-grid"></div>
@@ -65,9 +111,14 @@
                 <p class="profile-footer-text">
                     <span id="profileUserEmail"></span>
                 </p>
-                <button id="btnLogoutFromProfiles" class="btn btn-secondary btn-block">
-                    🚪 Cerrar Sesión
-                </button>
+                <div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center;">
+                    <button id="btnVolverSucursales" class="btn btn-secondary">
+                        ← Cambiar Sucursal
+                    </button>
+                    <button id="btnLogoutFromProfiles" class="btn btn-secondary">
+                        🚪 Cerrar Sesión
+                    </button>
+                </div>
             </div>
         </div>
     </div>
@@ -77,16 +128,22 @@
     ═══════════════════════════════════════════════════════ -->
     <div id="appContainer" class="container hidden">
 
-        <!-- Botón hamburguesa (móvil) -->
         <button class="menu-toggle" id="menuToggle">☰</button>
 
         <!-- SIDEBAR -->
         <aside class="sidebar" id="sidebar">
             <div class="sidebar-header">
                 <img src="img/logo_saiteck.png" alt="SaiTeck"
-                     style="width:100%;max-width:260px;object-fit:contain;display:block;margin:0 auto 8px;">
+                     style="width:100%;max-width:220px;object-fit:contain;display:block;margin:0 auto 6px;">
                 <p class="subtitle-sidebar">Sistema de Administración de Inventarios y Venta</p>
             </div>
+
+            <!-- Badge de sucursal activa en sidebar -->
+            <div id="sucursalBadgeContainer" class="sucursal-badge-sidebar" style="display:none;">
+                <span class="suc-label">Sucursal activa</span>
+                <span class="suc-nombre" id="sucursalNombreBadge">—</span>
+            </div>
+
             <nav class="menu" id="mainMenu"></nav>
 
             <div class="user-info-bottom">
@@ -111,7 +168,6 @@
                 <div class="card">
                     <h3>📊 Panel de Control</h3>
                     <div id="statsGrid" class="stats-grid"></div>
-
                     <div style="margin-top:24px;padding-top:20px;border-top:2px solid #e2e8f0;">
                         <h4 style="color:#2d3748;margin-bottom:14px;font-size:16px;font-weight:700;display:flex;align-items:center;gap:8px;">
                             🎯 Progreso de Meta Diaria
@@ -119,14 +175,11 @@
                         <div id="dashboardMetaVentas"></div>
                     </div>
                 </div>
-
                 <div id="dashboardBotonInventario"></div>
-
                 <div class="card">
                     <h3>⚠️ Alertas de Stock Bajo</h3>
                     <div id="alertasStock"></div>
                 </div>
-
                 <div class="card">
                     <h3>🚚 Próximas Visitas de Proveedores</h3>
                     <div id="proximasVisitas"></div>
@@ -135,7 +188,6 @@
 
             <!-- ─── PRODUCTOS ─── -->
             <section id="productos" class="section hidden">
-
                 <div class="collapsible-form-card">
                     <div class="collapsible-form-header" id="headerRegistrarProducto">
                         <h3>📦 Registrar Producto
@@ -159,7 +211,6 @@
                                     <input type="text" id="nombre" required placeholder="Nombre del producto">
                                 </div>
                             </div>
-
                             <div class="form-group" style="display:flex;align-items:center;gap:10px;margin-bottom:15px;">
                                 <input type="checkbox" id="esGranel"
                                        style="width:20px;height:20px;accent-color:var(--color-primario);cursor:pointer;">
@@ -168,7 +219,6 @@
                                     ⚖️ Producto a Granel (venta por peso/kg)
                                 </label>
                             </div>
-
                             <div class="form-row">
                                 <div class="form-group">
                                     <label>Precio de Compra (Proveedor)</label>
@@ -195,13 +245,10 @@
                         </form>
                     </div>
                 </div>
-
                 <div class="card">
                     <h3>Lista de Productos</h3>
                     <div style="margin-bottom:15px;">
-                        <button id="btnDescargarAlmacen" class="btn btn-success">
-                            📥 Descargar Inventario Completo
-                        </button>
+                        <button id="btnDescargarAlmacen" class="btn btn-success">📥 Descargar Inventario</button>
                     </div>
                     <div class="search-bar">
                         <input type="text" id="buscarProducto" placeholder="Buscar por nombre o clave...">
@@ -218,12 +265,8 @@
                         <table id="tablaProductos">
                             <thead>
                                 <tr>
-                                    <th>Clave</th>
-                                    <th>Nombre</th>
-                                    <th>Precio Compra</th>
-                                    <th>Precio Venta</th>
-                                    <th>Stock</th>
-                                    <th>Acciones</th>
+                                    <th>Clave</th><th>Nombre</th><th>Precio Compra</th>
+                                    <th>Precio Venta</th><th>Stock</th><th>Acciones</th>
                                 </tr>
                             </thead>
                             <tbody></tbody>
@@ -252,9 +295,7 @@
                     </div>
                     <div class="form-group">
                         <label>O seleccionar de la lista</label>
-                        <select id="selectProductoVenta">
-                            <option value="">-- Seleccione --</option>
-                        </select>
+                        <select id="selectProductoVenta"><option value="">-- Seleccione --</option></select>
                     </div>
                     <div id="infoProductoVenta"></div>
 
@@ -281,13 +322,10 @@
                     </div>
 
                     <button id="btnAgregarVenta" class="btn btn-success">Agregar a Venta</button>
-
                     <div id="listaVenta" style="margin-top:30px;"></div>
 
-                    <!-- ── Sección de cobro ── -->
                     <div style="margin-top:20px;padding:20px;background:#f7fafc;border-radius:8px;">
                         <h3>Total: $<span id="totalVenta">0.00</span></h3>
-
                         <div class="form-row" style="margin-top:15px;">
                             <div class="form-group">
                                 <label>Pago del Cliente (Efectivo)</label>
@@ -299,8 +337,6 @@
                                        style="background:#e2e8f0;font-weight:bold;">
                             </div>
                         </div>
-
-                        <!-- Botones de pago -->
                         <div class="pago-btns-row">
                             <button id="btnPagoExacto" class="btn btn-secondary">💵 Pago Exacto</button>
                             <button id="btnFinalizarVenta" class="btn btn-primary">✅ Cobrar Efectivo</button>
@@ -315,7 +351,6 @@
 
             <!-- ─── PROVEEDORES ─── -->
             <section id="proveedores" class="section hidden">
-
                 <div class="collapsible-form-card">
                     <div class="collapsible-form-header" id="headerRegistrarProveedor">
                         <h3>🚚 Registrar Proveedor
@@ -371,13 +406,10 @@
                                 </div>
                             </div>
                             <div id="mensajeProveedor"></div>
-                            <button type="submit" class="btn btn-primary" style="margin-top:15px;">
-                                Registrar Proveedor
-                            </button>
+                            <button type="submit" class="btn btn-primary" style="margin-top:15px;">Registrar Proveedor</button>
                         </form>
                     </div>
                 </div>
-
                 <div class="card">
                     <h3>Lista de Proveedores</h3>
                     <div class="search-bar">
@@ -387,11 +419,8 @@
                         <table id="tablaProveedores">
                             <thead>
                                 <tr>
-                                    <th>Nombre</th>
-                                    <th>Teléfono</th>
-                                    <th>Email</th>
-                                    <th>Próxima Visita</th>
-                                    <th>Acciones</th>
+                                    <th>Nombre</th><th>Teléfono</th><th>Email</th>
+                                    <th>Próxima Visita</th><th>Acciones</th>
                                 </tr>
                             </thead>
                             <tbody></tbody>
@@ -419,24 +448,14 @@
                             </select>
                         </div>
                     </div>
-
                     <div id="opcionesFecha" class="hidden" style="margin-top:15px;">
                         <div id="opcionFechaEspecifica" class="hidden">
-                            <div class="form-group">
-                                <label>Seleccionar Fecha</label>
-                                <input type="date" id="fechaEspecifica">
-                            </div>
+                            <div class="form-group"><label>Seleccionar Fecha</label><input type="date" id="fechaEspecifica"></div>
                         </div>
                         <div id="opcionRangoFechas" class="hidden">
                             <div class="form-row">
-                                <div class="form-group">
-                                    <label>Fecha Inicio</label>
-                                    <input type="date" id="fechaInicio">
-                                </div>
-                                <div class="form-group">
-                                    <label>Fecha Fin</label>
-                                    <input type="date" id="fechaFin">
-                                </div>
+                                <div class="form-group"><label>Fecha Inicio</label><input type="date" id="fechaInicio"></div>
+                                <div class="form-group"><label>Fecha Fin</label><input type="date" id="fechaFin"></div>
                             </div>
                         </div>
                         <div id="opcionMesEspecifico" class="hidden">
@@ -444,46 +463,45 @@
                                 <div class="form-group">
                                     <label>Mes</label>
                                     <select id="mesEspecifico">
-                                        <option value="0">Enero</option>
-                                        <option value="1">Febrero</option>
-                                        <option value="2">Marzo</option>
-                                        <option value="3">Abril</option>
-                                        <option value="4">Mayo</option>
-                                        <option value="5">Junio</option>
-                                        <option value="6">Julio</option>
-                                        <option value="7">Agosto</option>
-                                        <option value="8">Septiembre</option>
-                                        <option value="9">Octubre</option>
-                                        <option value="10">Noviembre</option>
-                                        <option value="11">Diciembre</option>
+                                        <option value="0">Enero</option><option value="1">Febrero</option>
+                                        <option value="2">Marzo</option><option value="3">Abril</option>
+                                        <option value="4">Mayo</option><option value="5">Junio</option>
+                                        <option value="6">Julio</option><option value="7">Agosto</option>
+                                        <option value="8">Septiembre</option><option value="9">Octubre</option>
+                                        <option value="10">Noviembre</option><option value="11">Diciembre</option>
                                     </select>
                                 </div>
-                                <div class="form-group">
-                                    <label>Año</label>
-                                    <input type="number" id="añoMesEspecifico" min="2020" max="2030" value="2025">
-                                </div>
+                                <div class="form-group"><label>Año</label><input type="number" id="añoMesEspecifico" min="2020" max="2030" value="2025"></div>
                             </div>
                         </div>
                         <div id="opcionAñoEspecifico" class="hidden">
-                            <div class="form-group">
-                                <label>Año</label>
-                                <input type="number" id="añoEspecifico" min="2020" max="2030" value="2025">
-                            </div>
+                            <div class="form-group"><label>Año</label><input type="number" id="añoEspecifico" min="2020" max="2030" value="2025"></div>
                         </div>
                     </div>
-
                     <button id="btnGenerarReporte" class="btn btn-primary">Generar Reporte</button>
                     <div id="contenidoReporte"></div>
                 </div>
             </section>
 
-            <!-- ─── ADMINISTRACIÓN / AUDITORÍA ─── -->
+            <!-- ─── ADMINISTRACIÓN / AUDITORÍA (sucursal activa) ─── -->
             <section id="administracion" class="section hidden">
                 <div class="card">
                     <div id="adminPanelContenido">
                         <div style="text-align:center;padding:60px 20px;color:#718096;">
                             <span style="font-size:48px;">🛡️</span>
                             <p style="margin-top:16px;font-size:16px;">Cargando panel de administración...</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ─── SUPER ADMIN — PANEL MAESTRO ─── -->
+            <section id="superadmin" class="section hidden">
+                <div class="card">
+                    <div id="superAdminContenido">
+                        <div style="text-align:center;padding:60px 20px;color:#718096;">
+                            <span style="font-size:48px;">👑</span>
+                            <p style="margin-top:16px;font-size:16px;">Cargando panel maestro...</p>
                         </div>
                     </div>
                 </div>
@@ -512,27 +530,35 @@
                         </div>
                     </div>
 
-                    <!-- Meta de ventas diaria -->
+                    <!-- Nombre de Sucursal (solo si hay sucursal activa) -->
+                    <div class="config-section" id="seccionNombreSucursal">
+                        <h4>🏪 Nombre de la Sucursal</h4>
+                        <p style="color:#718096;margin-bottom:16px;font-size:14px;">
+                            Personaliza el nombre de esta sucursal. El cambio se reflejará en todos los dispositivos.
+                        </p>
+                        <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
+                            <input type="text" id="inputNombreSucursal"
+                                   placeholder="Ej: Sucursal Centro, Tienda Norte…"
+                                   style="flex:1;min-width:200px;padding:10px 14px;border:2px solid #e2e8f0;border-radius:8px;font-size:15px;">
+                            <button id="btnGuardarNombreSucursal" class="btn btn-primary">Guardar Nombre</button>
+                        </div>
+                    </div>
+
+                    <!-- Meta de ventas -->
                     <div class="config-section">
                         <h4>🎯 Meta de Ventas Diaria</h4>
                         <p style="color:#718096;margin-bottom:16px;font-size:14px;">
-                            Define cuánto quieres vender cada día. La barra de progreso en el Dashboard
-                            se actualizará automáticamente con cada venta.
+                            Define cuánto quieres vender cada día en esta sucursal.
                         </p>
                         <div class="meta-ventas-config">
                             <span style="font-size:18px;font-weight:600;color:#4a5568;">$</span>
-                            <input type="number" id="inputMetaVentas" min="0" step="50"
-                                   placeholder="Ej: 1500">
-                            <button id="btnGuardarMetaVentas" class="btn btn-primary">
-                                Guardar Meta
-                            </button>
+                            <input type="number" id="inputMetaVentas" min="0" step="50" placeholder="Ej: 1500">
+                            <button id="btnGuardarMetaVentas" class="btn btn-primary">Guardar Meta</button>
                         </div>
-                        <small style="color:#a0aec0;margin-top:8px;display:block;">
-                            Ingresa 0 para desactivar la barra de meta.
-                        </small>
+                        <small style="color:#a0aec0;margin-top:8px;display:block;">Ingresa 0 para desactivar la barra de meta.</small>
                     </div>
 
-                    <!-- ── TERMINALES MERCADO PAGO (solo administradores) ── -->
+                    <!-- Terminales -->
                     <div id="seccionTerminales" class="config-section">
                         <div class="terminales-section-header">
                             <div>
@@ -542,18 +568,15 @@
                                 </h4>
                                 <p class="terminales-section-subtitle">
                                     Registra el <strong>Terminal ID</strong> de tu dispositivo Point.
-                                    Puedes encontrarlo en la app de Mercado Pago o consultando directamente
-                                    la API con el botón "Ver terminales en mi cuenta MP".
                                 </p>
                             </div>
                         </div>
-                        <!-- El JS inyecta aquí el listado + botones -->
                         <div id="seccionTerminalesContenido">
                             <p style="color:#718096;font-size:14px;">Cargando terminales...</p>
                         </div>
                     </div>
 
-                    <!-- Gestión de Usuarios (solo administradores) -->
+                    <!-- Gestión de Usuarios -->
                     <div id="seccionGestionUsuarios" class="config-section hidden">
                         <h4>Gestión de Usuarios y Perfiles</h4>
                         <p class="desc-limite-usuarios" style="color:#718096;margin-bottom:20px;">
@@ -569,7 +592,7 @@
                     <div class="config-section">
                         <h4>Personalización de Colores</h4>
                         <p style="color:#718096;margin-bottom:20px;">
-                            Personaliza los colores de la aplicación. Los cambios se sincronizarán en todos tus dispositivos.
+                            Personaliza los colores de la aplicación. Los cambios se aplican a esta sucursal.
                         </p>
                         <div class="form-row">
                             <div class="form-group">
@@ -632,7 +655,86 @@
     </div><!-- /appContainer -->
 
     <!-- ═══════════════════════════════════════════════════════
-         MODALES
+         MODAL NIP SUCURSAL  ← NUEVO
+    ═══════════════════════════════════════════════════════ -->
+    <div id="modalNIPSucursal" class="sucursal-nip-modal hidden" style="display:none;">
+        <div class="sucursal-nip-card">
+            <div style="margin-bottom:24px;">
+                <p style="font-size:24px;margin-bottom:8px;">🏪</p>
+                <h3 style="color:var(--color-primario);font-size:22px;margin-bottom:8px;">Ingresa el NIP</h3>
+                <p id="nipSucursalNombre" style="color:#4a5568;font-size:16px;font-weight:600;"></p>
+            </div>
+            <div class="nip-input-container">
+                <input type="password" class="nip-digit" maxlength="1" id="nipSuc1" readonly>
+                <input type="password" class="nip-digit" maxlength="1" id="nipSuc2" readonly>
+                <input type="password" class="nip-digit" maxlength="1" id="nipSuc3" readonly>
+                <input type="password" class="nip-digit" maxlength="1" id="nipSuc4" readonly>
+            </div>
+            <div class="nip-keypad">
+                <button class="nip-key" data-digit="1">1</button>
+                <button class="nip-key" data-digit="2">2</button>
+                <button class="nip-key" data-digit="3">3</button>
+                <button class="nip-key" data-digit="4">4</button>
+                <button class="nip-key" data-digit="5">5</button>
+                <button class="nip-key" data-digit="6">6</button>
+                <button class="nip-key" data-digit="7">7</button>
+                <button class="nip-key" data-digit="8">8</button>
+                <button class="nip-key" data-digit="9">9</button>
+                <button class="nip-key delete" data-digit="clear">⌫</button>
+                <button class="nip-key" data-digit="0">0</button>
+                <button class="nip-key delete" data-digit="cancel">✕</button>
+            </div>
+            <div id="nipSucursalError" class="nip-error"></div>
+        </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════
+         MODAL CREAR / EDITAR SUCURSAL  ← NUEVO
+    ═══════════════════════════════════════════════════════ -->
+    <div id="modalSucursal" class="modal-sucursal-overlay hidden" style="display:none;">
+        <div class="modal-sucursal-card">
+            <div class="modal-sucursal-header">
+                <h3 class="modal-sucursal-title" id="sucursalModalTitulo">
+                    <span style="font-size:22px;">🏪</span> Nueva Sucursal
+                </h3>
+                <button class="mp-modal-close" id="cerrarModalSucursal" title="Cerrar">✕</button>
+            </div>
+
+            <form id="formSucursal">
+                <input type="hidden" id="sucursalId">
+
+                <div class="form-group">
+                    <label>Nombre de la Sucursal *</label>
+                    <input type="text" id="sucursalNombre" required
+                           placeholder="Ej: Sucursal Centro, Tienda Norte…">
+                </div>
+
+                <div class="form-group">
+                    <label>NIP de Acceso (4 dígitos) *</label>
+                    <div style="display:flex;gap:10px;align-items:center;">
+                        <input type="text" id="sucursalNIP" maxlength="4" pattern="[0-9]{4}"
+                               required placeholder="0000"
+                               style="flex:1;padding:10px 14px;border:2px solid #e2e8f0;border-radius:8px;
+                                      font-size:22px;letter-spacing:8px;text-align:center;font-family:monospace;">
+                        <button type="button" id="btnGenerarNIPSucursal" class="btn btn-secondary"
+                                style="white-space:nowrap;">🎲 Generar</button>
+                    </div>
+                    <small style="color:#718096;margin-top:6px;display:block;">
+                        Este NIP será necesario para acceder a la sucursal. El administrador principal
+                        también puede acceder con su propio NIP.
+                    </small>
+                </div>
+
+                <div style="display:flex;gap:10px;margin-top:24px;flex-wrap:wrap;">
+                    <button type="submit" class="btn btn-primary" style="flex:1;">💾 Guardar Sucursal</button>
+                    <button type="button" id="btnCancelarSucursal" class="btn btn-secondary">Cancelar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════
+         MODALES EXISTENTES (sin cambios)
     ═══════════════════════════════════════════════════════ -->
 
     <!-- Modal Editar Producto -->
@@ -645,37 +747,18 @@
             <form id="formEditarProducto">
                 <input type="hidden" id="editProductoId">
                 <div class="form-row">
-                    <div class="form-group">
-                        <label>Clave</label>
-                        <input type="number" id="editClave" required>
-                    </div>
-                    <div class="form-group">
-                        <label>Nombre</label>
-                        <input type="text" id="editNombre" required>
-                    </div>
+                    <div class="form-group"><label>Clave</label><input type="number" id="editClave" required></div>
+                    <div class="form-group"><label>Nombre</label><input type="text" id="editNombre" required></div>
                 </div>
                 <div class="form-group" style="display:flex;align-items:center;gap:10px;margin-bottom:15px;">
-                    <input type="checkbox" id="editEsGranel"
-                           style="width:20px;height:20px;accent-color:var(--color-primario);cursor:pointer;">
-                    <label for="editEsGranel"
-                           style="margin:0;cursor:pointer;font-weight:600;color:var(--color-primario);">
-                        ⚖️ Producto a Granel (venta por peso/kg)
-                    </label>
+                    <input type="checkbox" id="editEsGranel" style="width:20px;height:20px;accent-color:var(--color-primario);cursor:pointer;">
+                    <label for="editEsGranel" style="margin:0;cursor:pointer;font-weight:600;color:var(--color-primario);">⚖️ Producto a Granel</label>
                 </div>
                 <div class="form-row">
-                    <div class="form-group">
-                        <label>Precio de Compra</label>
-                        <input type="number" step="0.01" id="editPrecioCompra" required>
-                    </div>
-                    <div class="form-group">
-                        <label id="labelEditPrecioVenta">Precio de Venta</label>
-                        <input type="number" step="0.01" id="editPrecioVenta" required>
-                    </div>
+                    <div class="form-group"><label>Precio de Compra</label><input type="number" step="0.01" id="editPrecioCompra" required></div>
+                    <div class="form-group"><label id="labelEditPrecioVenta">Precio de Venta</label><input type="number" step="0.01" id="editPrecioVenta" required></div>
                 </div>
-                <div class="form-group">
-                    <label id="labelEditStock">Stock</label>
-                    <input type="number" step="0.001" id="editStock" required>
-                </div>
+                <div class="form-group"><label id="labelEditStock">Stock</label><input type="number" step="0.001" id="editStock" required></div>
                 <button type="submit" class="btn btn-primary">Guardar Cambios</button>
             </form>
         </div>
@@ -691,25 +774,13 @@
             <form id="formEditarProveedor">
                 <input type="hidden" id="editProveedorId">
                 <input type="hidden" id="editTipoRepartoProveedor">
-                <div class="form-group">
-                    <label>Nombre</label>
-                    <input type="text" id="editNombreProveedor" required>
-                </div>
+                <div class="form-group"><label>Nombre</label><input type="text" id="editNombreProveedor" required></div>
                 <div class="form-row">
-                    <div class="form-group">
-                        <label>Teléfono</label>
-                        <input type="tel" id="editTelefonoProveedor">
-                    </div>
-                    <div class="form-group">
-                        <label>Email</label>
-                        <input type="email" id="editEmailProveedor">
-                    </div>
+                    <div class="form-group"><label>Teléfono</label><input type="tel" id="editTelefonoProveedor"></div>
+                    <div class="form-group"><label>Email</label><input type="email" id="editEmailProveedor"></div>
                 </div>
                 <div id="editGrupoFechaManual">
-                    <div class="form-group">
-                        <label>Próxima Visita</label>
-                        <input type="date" id="editFechaVisita">
-                    </div>
+                    <div class="form-group"><label>Próxima Visita</label><input type="date" id="editFechaVisita"></div>
                 </div>
                 <div id="editGrupoDiasConstantes" class="hidden">
                     <label>Días de Reparto</label>
@@ -736,7 +807,7 @@
         </div>
     </div>
 
-    <!-- Modal Programar Siguiente Visita -->
+    <!-- Modal Siguiente Visita -->
     <div id="modalSiguienteVisita" class="modal-overlay hidden" style="display:none;">
         <div class="modal-content">
             <div class="modal-header">
@@ -756,7 +827,7 @@
         </div>
     </div>
 
-    <!-- Modal Crear / Editar Usuario -->
+    <!-- Modal Usuarios -->
     <div id="modalUsuario" class="modal-overlay hidden" style="display:none;">
         <div class="modal-content">
             <div class="modal-header">
@@ -765,46 +836,37 @@
             </div>
             <form id="formUsuario">
                 <input type="hidden" id="usuarioId">
-
                 <div class="form-group">
                     <label>Nombre del Usuario *</label>
                     <input type="text" id="nombreUsuario" required placeholder="Ej: Juan Pérez">
                 </div>
-
                 <div class="form-group">
                     <label>Rol *</label>
                     <select id="rolUsuario" required>
                         <option value="empleado">Empleado</option>
                         <option value="administrador">Administrador</option>
                     </select>
-                    <small style="color:#718096;margin-top:5px;display:block;">
-                        Los administradores tienen acceso completo al sistema (acotado al plan contratado).
-                    </small>
                 </div>
-
                 <div class="nip-field-container">
                     <h5>🔒 NIP de Acceso (4 dígitos)</h5>
                     <div class="nip-display">
                         <span id="displayNIP" class="nip-value hidden-nip">••••</span>
                         <button type="button" class="nip-toggle" id="toggleNIP" title="Mostrar/Ocultar NIP">👁️</button>
                     </div>
-                    <div class="nip-edit-controls" id="nipEditControls">
+                    <div class="nip-edit-controls">
                         <input type="text" id="inputNIP" maxlength="4" pattern="[0-9]{4}" placeholder="0000">
                         <button type="button" class="btn btn-secondary" id="btnGenerarNIP">🎲 Generar</button>
                     </div>
                 </div>
-
                 <div id="seccionPermisos" class="form-group" style="margin-top:20px;">
                     <label style="font-weight:700;font-size:15px;">🔐 Permisos</label>
                     <small style="color:#718096;display:block;margin-bottom:10px;">
                         Define qué acciones puede realizar este empleado.
-                        Los módulos bloqueados por tu plan aparecen deshabilitados.
                     </small>
                     <div id="listadoPermisos"
                          style="max-height:300px;overflow-y:auto;border:2px solid #e2e8f0;border-radius:8px;padding:15px;background:#f7fafc;">
                     </div>
                 </div>
-
                 <div style="display:flex;gap:10px;margin-top:20px;">
                     <button type="submit" class="btn btn-primary">Guardar Usuario</button>
                     <button type="button" class="btn btn-secondary" id="btnCancelarUsuario">Cancelar</button>
@@ -813,7 +875,7 @@
         </div>
     </div>
 
-    <!-- Modal Verificación de NIP -->
+    <!-- Modal NIP Usuarios -->
     <div id="modalNIP" class="nip-modal hidden" style="display:none;">
         <div class="nip-modal-content">
             <div class="nip-modal-header">
@@ -844,7 +906,7 @@
         </div>
     </div>
 
-    <!-- Modal Escáner de Código de Barras -->
+    <!-- Modal Escáner -->
     <div id="modalEscaner" class="escaner-overlay hidden" style="display:none;">
         <div class="escaner-container">
             <div class="escaner-header">
@@ -855,10 +917,8 @@
                 <video id="escanerVideo" autoplay playsinline muted></video>
                 <div class="escaner-guia">
                     <div class="escaner-marco">
-                        <span class="esquina tl"></span>
-                        <span class="esquina tr"></span>
-                        <span class="esquina bl"></span>
-                        <span class="esquina br"></span>
+                        <span class="esquina tl"></span><span class="esquina tr"></span>
+                        <span class="esquina bl"></span><span class="esquina br"></span>
                         <div class="escaner-linea"></div>
                     </div>
                 </div>
@@ -868,13 +928,9 @@
         </div>
     </div>
 
-    <!-- ═══════════════════════════════════════════════════════
-         MODAL — COBRAR CON TARJETA (Mercado Pago Point)
-    ═══════════════════════════════════════════════════════ -->
+    <!-- Modal Cobrar con Tarjeta -->
     <div id="modalCobrarTarjeta" class="mp-modal-overlay hidden" style="display:none;">
         <div class="mp-modal-card">
-
-            <!-- Encabezado fijo -->
             <div class="mp-modal-header">
                 <div class="mp-modal-header-logo">💳</div>
                 <div class="mp-modal-header-title">
@@ -883,21 +939,13 @@
                 </div>
                 <button class="mp-modal-close" id="btnCerrarModalTarjeta" title="Cerrar">✕</button>
             </div>
-
-            <!-- Contenido dinámico inyectado por JS -->
-            <div id="cobrarTarjetaContenido">
-                <!-- abrirModalCobrarTarjeta() inyecta aquí el paso 1 y paso 2 -->
-            </div>
-
+            <div id="cobrarTarjetaContenido"></div>
         </div>
     </div>
 
-    <!-- ═══════════════════════════════════════════════════════
-         MODAL — REGISTRAR / EDITAR TERMINAL (Terminal ID de MP)
-    ═══════════════════════════════════════════════════════ -->
+    <!-- Modal Terminal -->
     <div id="modalTerminal" class="terminal-modal-overlay hidden" style="display:none;">
         <div class="terminal-modal-card">
-
             <div class="terminal-modal-header">
                 <h3 class="terminal-modal-title" id="tituloModalTerminal">
                     <span style="background:linear-gradient(135deg,#009ee3,#0066cc);color:white;border-radius:8px;padding:4px 8px;font-size:18px;">🖥️</span>
@@ -905,72 +953,29 @@
                 </h3>
                 <button class="mp-modal-close" id="btnCerrarModalTerminal" title="Cerrar">✕</button>
             </div>
-
             <form id="formTerminal">
                 <input type="hidden" id="terminalId">
-
                 <div class="form-group">
                     <label>Nombre de la Terminal *</label>
-                    <input type="text" id="terminalNombre" required
-                           placeholder="Ej: Caja Principal, Terminal 1…">
-                    <small style="color:#718096;margin-top:5px;display:block;">
-                        Nombre descriptivo para identificar la terminal en el sistema.
-                    </small>
+                    <input type="text" id="terminalNombre" required placeholder="Ej: Caja Principal…">
                 </div>
-
                 <div class="form-group">
                     <label>Terminal ID *</label>
                     <input type="text" id="terminalDeviceId" required
                            placeholder="Ej: NEWLAND_N950__N950NCB801293324"
                            style="font-family:'Courier New',monospace;letter-spacing:0.5px;">
-
                     <div class="mp-device-id-help">
                         <span class="mp-device-id-help-icon">ℹ️</span>
                         <span class="mp-device-id-help-text">
-                            El <strong>Terminal ID</strong> identifica tu dispositivo Point en la API de Mercado Pago.
-                            Puedes obtenerlo de tres formas:
+                            Encuéntralo en la app MP → Cobrar con Point → tu dispositivo → Ajustes.
                         </span>
                     </div>
-
-                    <div class="mp-steps-section">
-                        <p class="mp-steps-title">¿Cómo obtener el Terminal ID?</p>
-                        <ul class="mp-steps-list">
-                            <li>
-                                <span class="mp-step-num">1</span>
-                                <span>
-                                    <strong>Desde la app MP:</strong> Abre Mercado Pago →
-                                    Cobrar con Point → selecciona tu dispositivo → Ajustes → ID del dispositivo.
-                                </span>
-                            </li>
-                            <li>
-                                <span class="mp-step-num">2</span>
-                                <span>
-                                    <strong>Botón de consulta:</strong> Cierra este modal y pulsa
-                                    "Ver terminales en mi cuenta MP" para obtenerlos automáticamente.
-                                </span>
-                            </li>
-                            <li>
-                                <span class="mp-step-num">3</span>
-                                <span>
-                                    <strong>Panel de desarrolladores:</strong> Consulta
-                                    <em>api.mercadopago.com/terminals/v1/list</em>
-                                    con tu Access Token.
-                                </span>
-                            </li>
-                        </ul>
-                    </div>
                 </div>
-
                 <div style="display:flex;gap:10px;margin-top:24px;flex-wrap:wrap;">
-                    <button type="submit" class="btn-mp-add" style="padding:12px 24px;font-size:15px;">
-                        💾 Guardar Terminal
-                    </button>
-                    <button type="button" id="btnCancelarTerminal" class="btn btn-secondary">
-                        Cancelar
-                    </button>
+                    <button type="submit" class="btn-mp-add" style="padding:12px 24px;font-size:15px;">💾 Guardar Terminal</button>
+                    <button type="button" id="btnCancelarTerminal" class="btn btn-secondary">Cancelar</button>
                 </div>
             </form>
-
         </div>
     </div>
 
@@ -984,42 +989,44 @@
     <script src="js/firebase-config.js"></script>
     <script type="module" src="js/app.js"></script>
 
-    <!-- Listeners de cierre de modales MP/Terminal -->
     <script>
         document.addEventListener('DOMContentLoaded', () => {
 
-            // Cerrar modal cobrar tarjeta
-            document.getElementById('btnCerrarModalTarjeta')?.addEventListener('click', () => {
+            // ── Panel Maestro ──
+            document.getElementById('btnPanelMaestro')?.addEventListener('click', async () => {
                 if (window.appInstance) {
-                    window.appInstance._cancelarCobroTarjeta?.();
-                } else {
-                    const m = document.getElementById('modalCobrarTarjeta');
-                    if (m) { m.classList.add('hidden'); m.style.display = 'none'; }
+                    await window.appInstance.mostrarPanelMaestro();
                 }
             });
 
-            // Cerrar modal terminal
+            // ── Modal sucursal: cancelar ──
+            document.getElementById('btnCancelarSucursal')?.addEventListener('click', () => {
+                const modal = document.getElementById('modalSucursal');
+                if (modal) { modal.classList.add('hidden'); modal.style.display = 'none'; }
+            });
+
+            // ── Cerrar cobrar tarjeta ──
+            document.getElementById('btnCerrarModalTarjeta')?.addEventListener('click', () => {
+                if (window.appInstance) window.appInstance._cancelarCobroTarjeta?.();
+                else { const m = document.getElementById('modalCobrarTarjeta'); if (m) { m.classList.add('hidden'); m.style.display = 'none'; } }
+            });
+
+            // ── Cerrar terminal ──
             const cerrarTerminal = () => {
-                if (window.appInstance) {
-                    window.appInstance.cerrarModal?.('modalTerminal');
-                } else {
-                    const m = document.getElementById('modalTerminal');
-                    if (m) { m.classList.add('hidden'); m.style.display = 'none'; }
-                }
+                if (window.appInstance) window.appInstance.cerrarModal?.('modalTerminal');
+                else { const m = document.getElementById('modalTerminal'); if (m) { m.classList.add('hidden'); m.style.display = 'none'; } }
             };
             document.getElementById('btnCerrarModalTerminal')?.addEventListener('click', cerrarTerminal);
             document.getElementById('btnCancelarTerminal')?.addEventListener('click', cerrarTerminal);
 
-            // Cerrar al hacer clic fuera de las tarjetas
+            // ── Cerrar al fondo modal tarjeta ──
             document.getElementById('modalCobrarTarjeta')?.addEventListener('click', (e) => {
                 if (e.target === document.getElementById('modalCobrarTarjeta')) {
                     window.appInstance?._cancelarCobroTarjeta?.();
                 }
             });
             document.getElementById('modalTerminal')?.addEventListener('click', (e) => {
-                if (e.target === document.getElementById('modalTerminal')) {
-                    cerrarTerminal();
-                }
+                if (e.target === document.getElementById('modalTerminal')) cerrarTerminal();
             });
         });
     </script>
