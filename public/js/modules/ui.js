@@ -1,5 +1,5 @@
 // ui.js - Módulo para manejo de la interfaz de usuario
-// ACTUALIZADO: Agrega ítem de menú superadmin
+// CORREGIDO: Lógica de permisos en mostrarSeccion y renderizarMenu
 
 export class UIManager {
     constructor() {
@@ -21,11 +21,15 @@ export class UIManager {
 
     // === NAVEGACIÓN ===
     mostrarSeccion(seccionId) {
-        if (seccionId !== 'administracion' && seccionId !== 'superadmin') {
+        // Secciones que siempre son accesibles sin verificación de permiso
+        const seccionesLibres = ['administracion', 'superadmin', 'configuracion'];
+
+        if (!seccionesLibres.includes(seccionId)) {
             if (window.appInstance && window.appInstance.usuariosManager) {
                 const usuarioActual = window.appInstance.usuariosManager.obtenerUsuarioActual();
+                // Solo verificar permisos si hay un usuario activo
                 if (usuarioActual && !window.appInstance.usuariosManager.tienePermiso(seccionId)) {
-                    window.appInstance.uiManager.alerta('No tienes permiso para acceder a esta sección');
+                    this.alerta('No tienes permiso para acceder a esta sección');
                     return;
                 }
             }
@@ -89,24 +93,29 @@ export class UIManager {
     renderizarMenu(contenedor) {
         if (!contenedor) return;
 
-        // Si no hay sucursal activa → modo super admin, menú reducido
-        const esSuperAdmin = !window.sucursalActualId;
+        // CORRECCIÓN: Solo es modo superAdmin si explícitamente NO hay sucursal activa
+        // y además se está en el panel maestro (determinado por la sección actual o un flag)
+        // La verificación correcta es: hay usuario autenticado en Firebase pero
+        // NO hay sucursal seleccionada Y el usuario eligió "Panel Maestro"
+        // Para evitar falsos positivos al inicio, usamos un flag explícito
+        const esSuperAdmin = window._modoSuperAdmin === true;
 
-        const menuItems = esSuperAdmin
-            ? [
-                { id: 'superadmin',    icono: '👑', texto: 'Panel Maestro' },
-                { id: 'configuracion', icono: '⚙️', texto: 'Configuración' }
-              ]
-            : [
-                { id: 'dashboard',      icono: '📊', texto: 'Dashboard' },
-                { id: 'productos',      icono: '📦', texto: 'Productos' },
-                { id: 'ventas',         icono: '💰', texto: 'Realizar Venta' },
-                { id: 'proveedores',    icono: '🚚', texto: 'Proveedores' },
-                { id: 'reportes',       icono: '📈', texto: 'Reportes' },
-                { id: 'administracion', icono: '🛡️', texto: 'Administración' },
-                { id: 'configuracion',  icono: '⚙️', texto: 'Configuración' }
-              ];
+        const menuItemsSucursal = [
+            { id: 'dashboard',      icono: '📊', texto: 'Dashboard' },
+            { id: 'productos',      icono: '📦', texto: 'Productos' },
+            { id: 'ventas',         icono: '💰', texto: 'Realizar Venta' },
+            { id: 'proveedores',    icono: '🚚', texto: 'Proveedores' },
+            { id: 'reportes',       icono: '📈', texto: 'Reportes' },
+            { id: 'administracion', icono: '🛡️', texto: 'Administración' },
+            { id: 'configuracion',  icono: '⚙️', texto: 'Configuración' }
+        ];
 
+        const menuItemsSuperAdmin = [
+            { id: 'superadmin',    icono: '👑', texto: 'Panel Maestro' },
+            { id: 'configuracion', icono: '⚙️', texto: 'Configuración' }
+        ];
+
+        const menuItems     = esSuperAdmin ? menuItemsSuperAdmin : menuItemsSucursal;
         const defaultSection = esSuperAdmin ? 'superadmin' : 'dashboard';
 
         contenedor.innerHTML = menuItems.map(item => `
@@ -120,8 +129,8 @@ export class UIManager {
     renderizarTablaProductos(productos, tbody) {
         if (!tbody) return;
 
-        const tienePermisoEditar   = window.appInstance?.usuariosManager.tienePermiso('productos_editar')   || false;
-        const tienePermisoEliminar = window.appInstance?.usuariosManager.tienePermiso('productos_eliminar') || false;
+        const tienePermisoEditar   = window.appInstance?.usuariosManager?.tienePermiso('productos_editar')   || false;
+        const tienePermisoEliminar = window.appInstance?.usuariosManager?.tienePermiso('productos_eliminar') || false;
 
         tbody.innerHTML = productos.map(producto => {
             const stockTexto  = producto.esGranel
@@ -250,8 +259,8 @@ export class UIManager {
     renderizarTablaProveedores(proveedores, tbody, proveedoresManager) {
         if (!tbody) return;
 
-        const tienePermisoEditar   = window.appInstance?.usuariosManager.tienePermiso('proveedores_editar')   || false;
-        const tienePermisoEliminar = window.appInstance?.usuariosManager.tienePermiso('proveedores_eliminar') || false;
+        const tienePermisoEditar   = window.appInstance?.usuariosManager?.tienePermiso('proveedores_editar')   || false;
+        const tienePermisoEliminar = window.appInstance?.usuariosManager?.tienePermiso('proveedores_eliminar') || false;
 
         tbody.innerHTML = proveedores.map(proveedor => {
             const esHoy = proveedoresManager.esVisitaHoy(proveedor.fechaVisita);

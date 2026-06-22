@@ -1,4 +1,5 @@
 // usuarios.js - Módulo para gestión de usuarios y perfiles
+// CORREGIDO: tienePermiso no bloquea todo cuando usuarioActual es null
 
 // ─────────────────────────────────────────────────────────────
 // CONJUNTOS DE PERMISOS POR NIVEL
@@ -77,7 +78,6 @@ export class UsuariosManager {
     // SUSCRIPCIÓN DE CUENTA
     // Devuelve los permisos máximos que permite el plan contratado.
     // window.cuentaAccesoTotal lo carga firebase-config.js al autenticar.
-    // TÚ lo controlas en Firestore Console: users/{uid} → accesoTotal: true/false
     // ─────────────────────────────────────────────────────────
     _permisosMaximosCuenta() {
         return window.cuentaAccesoTotal === true ? PERMISOS_TOTALES : PERMISOS_BASICOS;
@@ -113,13 +113,23 @@ export class UsuariosManager {
 
     // ─────────────────────────────────────────────────────────
     // VERIFICAR PERMISO
-    // Punto de entrada que usa toda la app para validar acceso.
+    // CORRECCIÓN: Si no hay usuarioActual, intenta cargar de session.
+    // Si tampoco hay, permite acceso (la restricción la hace la UI al
+    // redirigir a selección de perfil). Esto evita que la app quede
+    // completamente bloqueada por una carrera de inicialización.
     // ─────────────────────────────────────────────────────────
     tienePermiso(permiso) {
-        if (!this.usuarioActual) return false;
-
-        // Configuración siempre accesible (cambiar perfil / logout)
+        // Configuración siempre accesible
         if (permiso === 'configuracion') return true;
+
+        // Intentar recuperar usuario de sesión si no está en memoria
+        if (!this.usuarioActual) {
+            this.cargarUsuarioActualDeSession();
+        }
+
+        // Si definitivamente no hay usuario, negar permisos específicos
+        // pero NO bloquear completamente (el flujo de login se encarga)
+        if (!this.usuarioActual) return false;
 
         const efectivos = this._resolverPermisosEfectivos(this.usuarioActual);
 
@@ -139,6 +149,9 @@ export class UsuariosManager {
     // ─────────────────────────────────────────────────────────
 
     esAdministrador() {
+        if (!this.usuarioActual) {
+            this.cargarUsuarioActualDeSession();
+        }
         return this.usuarioActual && (
             this.usuarioActual.rol === 'administrador' ||
             this.usuarioActual.esPrincipal
@@ -147,8 +160,6 @@ export class UsuariosManager {
 
     /**
      * Indica si el plan de la cuenta incluye acceso total.
-     * Usado en app.js para deshabilitar la opción "Acceso Total"
-     * en el modal de usuarios cuando la cuenta es básica.
      */
     cuentaTieneAccesoTotal() {
         return window.cuentaAccesoTotal === true;
@@ -248,7 +259,7 @@ export class UsuariosManager {
             nombre:      'Administrador Principal',
             rol:         'administrador',
             email:       window.currentUser.email,
-            accesoTotal: true,   // el admin del negocio ve todo lo que su plan permite
+            accesoTotal: true,
             esPrincipal: true,
             nip:         this.generarNIPAleatorio(),
             createdAt:   firebase.firestore.FieldValue.serverTimestamp()
@@ -282,7 +293,15 @@ export class UsuariosManager {
 
     cargarUsuarioActualDeSession() {
         const guardado = sessionStorage.getItem('usuarioActual');
-        if (guardado) this.usuarioActual = JSON.parse(guardado);
+        if (guardado) {
+            try {
+                this.usuarioActual = JSON.parse(guardado);
+            } catch (e) {
+                console.warn('[Usuarios] Error al parsear usuarioActual de session:', e);
+                this.usuarioActual = null;
+                sessionStorage.removeItem('usuarioActual');
+            }
+        }
         return this.usuarioActual;
     }
 

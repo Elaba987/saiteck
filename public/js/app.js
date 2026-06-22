@@ -1,5 +1,5 @@
 // app.js - Módulo principal de la aplicación
-// ACTUALIZADO: Soporte completo multi-sucursal
+// CORREGIDO: Lógica de permisos en menú, modo super admin y flujo de carga
 
 import { ProductosManager }    from './modules/productos.js';
 import { VentasManager }       from './modules/ventas.js';
@@ -53,7 +53,8 @@ class TiendaApp {
 
     init() {
         window.appInstance = this;
-        this.renderizarMenu();
+        // CORRECCIÓN: No renderizar menú en init porque aún no hay usuario
+        // El menú se renderiza en onUserAuthenticated con el contexto correcto
         this.inicializarEventListeners();
         this.inicializarModales();
         this.inicializarMenuMobile();
@@ -151,7 +152,6 @@ class TiendaApp {
                 this.auditoriaManager.registrar('SUCURSAL_EDITAR', { nombre });
             }
             this.cerrarModal('modalSucursal');
-            // Refrescar vista si estamos en superadmin
             if (this.superAdminManager) {
                 const cont = document.getElementById('saContenido');
                 if (cont) await this.superAdminManager._renderizarVista('sucursales');
@@ -166,7 +166,6 @@ class TiendaApp {
     // SELECCIÓN DE SUCURSAL — Pantalla intermedia
     // ============================================================
     async mostrarPantallaSucursales() {
-        // Asegurarse de que las sucursales estén cargadas
         await this.sucursalesManager.inicializarSiVacio();
 
         const sucursales = this.sucursalesManager.obtenerTodas().filter(s => !s.eliminada);
@@ -177,7 +176,6 @@ class TiendaApp {
 
         if (!contenedor) return;
 
-        // ¿Tiene más de una sucursal? → mostrar grid. Si solo hay una → entrar directo
         const activas = sucursales.filter(s => s.activa);
 
         // Si solo hay una sucursal y no es cuenta premium → entrar directo
@@ -200,7 +198,6 @@ class TiendaApp {
             </div>
         `).join(''));
 
-        // Clicks en tarjetas
         contenedor.querySelectorAll('.sucursal-card-item:not(.inactiva)').forEach(item => {
             item.addEventListener('click', async () => {
                 const id = item.dataset.id;
@@ -232,10 +229,7 @@ class TiendaApp {
 
             const verificar = async () => {
                 if (nipActual.length === 4) {
-                    // Verificar NIP de la sucursal directamente
                     const esValido = sucursal.nip === nipActual;
-
-                    // También aceptar el NIP del usuario principal (admins)
                     const usuarioPrincipal = this.usuariosManager.obtenerTodos().find(u => u.esPrincipal);
                     const esNIPAdmin = usuarioPrincipal && usuarioPrincipal.nip === nipActual;
 
@@ -256,7 +250,6 @@ class TiendaApp {
                 }
             };
 
-            // Limpiar listeners anteriores
             modal.querySelectorAll('.nip-key').forEach(tecla => {
                 const nuevo = tecla.cloneNode(true);
                 tecla.parentNode.replaceChild(nuevo, tecla);
@@ -285,18 +278,17 @@ class TiendaApp {
     }
 
     async _entrarSucursal(sucursal) {
-        // Guardar sucursal activa en globales
         window.sucursalActualId     = sucursal.id;
         window.sucursalActualNombre = sucursal.nombre;
+        // CORRECCIÓN: Asegurarse de limpiar el flag de super admin al entrar a sucursal
+        window._modoSuperAdmin = false;
 
         this.sucursalesManager.establecerSucursalActual(sucursal);
 
-        // Registrar auditoría
         this.auditoriaManager.registrar('SUCURSAL_SELECCION', {
             sucursal: sucursal.nombre
         });
 
-        // Ir a selección de perfil de usuario
         window.mostrarSeleccionPerfil();
     }
 
@@ -304,12 +296,10 @@ class TiendaApp {
     // PANEL MAESTRO (Super Admin)
     // ============================================================
     async mostrarPanelMaestro() {
-        // Solicitar NIP del usuario principal (admin maestro)
         await this.sucursalesManager.inicializarSiVacio();
         const usuarioPrincipal = this.usuariosManager.obtenerTodos().find(u => u.esPrincipal);
 
         if (!usuarioPrincipal) {
-            // Inicializar usuarios primero
             await this.usuariosManager.inicializar();
         }
 
@@ -319,16 +309,15 @@ class TiendaApp {
             return;
         }
 
-        // Usar el modal de NIP existente
         const nipValido = await this.solicitarNIP(principal.id);
         if (!nipValido) return;
 
-        // Entrar al panel maestro sin sucursal activa
+        // CORRECCIÓN: Limpiar sucursal activa y activar flag de modo super admin
         window.sucursalActualId     = null;
         window.sucursalActualNombre = null;
+        window._modoSuperAdmin      = true;
         this.sucursalesManager.cerrarSesionSucursal();
 
-        // Mostrar la app en modo superadmin
         window.mostrarApp(true);
     }
 
@@ -336,11 +325,21 @@ class TiendaApp {
     // AUTENTICACIÓN / CARGA DE DATOS
     // ============================================================
     async onUserAuthenticated(esSuperAdmin = false) {
+        // Resetear datos cuando cambia el modo
+        if (esSuperAdmin) {
+            this.datosInicializados = false;
+        }
+
         if (this.datosInicializados && !esSuperAdmin) return;
 
         try {
             this.uiManager.mostrarCargando();
+
+            // CORRECCIÓN: Inicializar usuarios PRIMERO para que tienePermiso funcione
             await this.usuariosManager.inicializar();
+
+            // Restaurar usuario de sesión si existe
+            this.usuariosManager.cargarUsuarioActualDeSession();
 
             this.productosManager.setAuditoriaManager(this.auditoriaManager);
             this.ventasManager.setAuditoriaManager(this.auditoriaManager);
@@ -351,7 +350,6 @@ class TiendaApp {
                 this.auditoriaManager, this.usuariosManager
             );
 
-            // Inicializar superAdmin
             this.superAdminManager = new SuperAdminManager(
                 this.sucursalesManager, this.reportesManager, this.auditoriaManager
             );
@@ -401,6 +399,9 @@ class TiendaApp {
             // Cargar sucursales
             await this.sucursalesManager.cargarSucursales();
 
+            // CORRECCIÓN: Renderizar menú AQUÍ, con el contexto correcto ya disponible
+            this.renderizarMenu();
+
             this.actualizarMenuSegunPermisos();
             this.actualizarInfoUsuarioEnConfiguracion();
             this.actualizarBadgeSucursal();
@@ -412,7 +413,11 @@ class TiendaApp {
             if (esSuperAdmin) {
                 this.uiManager.mostrarSeccion('superadmin');
                 await this._activarSuperAdmin();
+            } else if (window.sucursalActualId) {
+                // Mostrar dashboard por defecto al entrar a sucursal
+                this.uiManager.mostrarSeccion('dashboard');
             }
+
         } catch (error) {
             console.error('Error al inicializar datos:', error);
             this.uiManager.alerta('Error al cargar los datos. Por favor recarga la página.');
@@ -562,7 +567,6 @@ class TiendaApp {
         const emailElement = document.getElementById('profileUserEmail');
         if (emailElement && window.currentUser) emailElement.textContent = window.currentUser.email;
 
-        // Mostrar nombre de sucursal activa
         const sucBadge = document.getElementById('profileSucursalBadge');
         if (sucBadge) {
             if (window.sucursalActualNombre) {
@@ -616,16 +620,101 @@ class TiendaApp {
         window.mostrarApp(false);
     }
 
+    // ============================================================
+    // MENÚ PRINCIPAL
+    // ============================================================
+    renderizarMenu() {
+        const menuContainer = document.getElementById('mainMenu');
+        if (!menuContainer) return;
+
+        this.uiManager.renderizarMenu(menuContainer);
+
+        // Limpiar listeners anteriores reemplazando el nodo
+        const nuevoMenu = menuContainer.cloneNode(true);
+        menuContainer.parentNode.replaceChild(nuevoMenu, menuContainer);
+
+        // Volver a renderizar en el nuevo nodo
+        this.uiManager.renderizarMenu(nuevoMenu);
+
+        nuevoMenu.addEventListener('click', e => {
+            const menuItem = e.target.closest('.menu-item');
+            if (menuItem) {
+                const seccion = menuItem.dataset.section;
+                this.uiManager.mostrarSeccion(seccion);
+                if (seccion === 'dashboard')      this.actualizarDashboard();
+                if (seccion === 'reportes')       this.mostrarOpcionesReporte();
+                if (seccion === 'administracion') this._activarAdminPanel();
+                if (seccion === 'superadmin')     this._activarSuperAdmin();
+                if (seccion === 'configuracion')  this._actualizarVistaTerminales();
+            }
+        });
+
+        document.getElementById('statsGrid')?.addEventListener('click', e => {
+            const statCard = e.target.closest('.stat-card');
+            if (statCard?.dataset.section) this.uiManager.mostrarSeccion(statCard.dataset.section);
+        });
+    }
+
+    // CORRECCIÓN: actualizarMenuSegunPermisos ahora verifica correctamente
+    // que solo oculta items cuando hay un usuario activo con permisos definidos.
+    // El item 'superadmin' se controla por el flag window._modoSuperAdmin.
     actualizarMenuSegunPermisos() {
+        const usuarioActual = this.usuariosManager.obtenerUsuarioActual();
+
         document.querySelectorAll('.menu-item').forEach(item => {
             const seccion = item.dataset.section;
+
+            // Superadmin solo visible en modo maestro
             if (seccion === 'superadmin') {
-                // Superadmin solo visible si NO hay sucursal activa (modo maestro)
-                item.style.display = !window.sucursalActualId ? 'flex' : 'none';
+                item.style.display = window._modoSuperAdmin ? 'flex' : 'none';
                 return;
             }
+
+            // Configuración siempre visible
+            if (seccion === 'configuracion') {
+                item.style.display = 'flex';
+                return;
+            }
+
+            // Administración: solo para administradores
+            if (seccion === 'administracion') {
+                item.style.display = this.usuariosManager.esAdministrador() ? 'flex' : 'none';
+                return;
+            }
+
+            // Si no hay usuario activo y NO es modo superadmin: ocultar todo excepto configuracion
+            if (!usuarioActual && !window._modoSuperAdmin) {
+                item.style.display = 'none';
+                return;
+            }
+
+            // Verificar permiso normal
             item.style.display = this.usuariosManager.tienePermiso(seccion) ? 'flex' : 'none';
         });
+    }
+
+    async _activarAdminPanel() {
+        if (!this.usuariosManager.esAdministrador()) return;
+        if (!this.adminPanelManager) {
+            this.adminPanelManager = new AdminPanelManager(this.auditoriaManager, this.usuariosManager);
+        }
+        const contenedor = document.getElementById('adminPanelContenido');
+        if (contenedor) {
+            await this.adminPanelManager.activar();
+        }
+    }
+
+    async _activarSuperAdmin() {
+        if (!this.superAdminManager) {
+            this.superAdminManager = new SuperAdminManager(
+                this.sucursalesManager, this.reportesManager, this.auditoriaManager
+            );
+        }
+        await this.sucursalesManager.cargarSucursales();
+        const contenedor = document.getElementById('superAdminContenido');
+        if (contenedor) {
+            await this.superAdminManager.renderizar(contenedor);
+        }
     }
 
     // ============================================================
@@ -658,55 +747,6 @@ class TiendaApp {
     abrirModal(modalId) {
         const modal = document.getElementById(modalId);
         if (modal) { modal.classList.remove('hidden'); modal.style.display = 'flex'; }
-    }
-
-    // ============================================================
-    // MENÚ PRINCIPAL
-    // ============================================================
-    renderizarMenu() {
-        const menuContainer = document.getElementById('mainMenu');
-        this.uiManager.renderizarMenu(menuContainer);
-        menuContainer.addEventListener('click', e => {
-            const menuItem = e.target.closest('.menu-item');
-            if (menuItem) {
-                const seccion = menuItem.dataset.section;
-                this.uiManager.mostrarSeccion(seccion);
-                if (seccion === 'dashboard')      this.actualizarDashboard();
-                if (seccion === 'reportes')       this.mostrarOpcionesReporte();
-                if (seccion === 'administracion') this._activarAdminPanel();
-                if (seccion === 'superadmin')     this._activarSuperAdmin();
-                if (seccion === 'configuracion')  this._actualizarVistaTerminales();
-            }
-        });
-        document.getElementById('statsGrid')?.addEventListener('click', e => {
-            const statCard = e.target.closest('.stat-card');
-            if (statCard?.dataset.section) this.uiManager.mostrarSeccion(statCard.dataset.section);
-        });
-    }
-
-    async _activarAdminPanel() {
-        if (!this.usuariosManager.tienePermiso('administracion')) return;
-        if (!this.adminPanelManager) {
-            this.adminPanelManager = new AdminPanelManager(this.auditoriaManager, this.usuariosManager);
-        }
-        // Filtrar auditoría por sucursal activa
-        const contenedor = document.getElementById('adminPanelContenido');
-        if (contenedor) {
-            await this.adminPanelManager.activar();
-        }
-    }
-
-    async _activarSuperAdmin() {
-        if (!this.superAdminManager) {
-            this.superAdminManager = new SuperAdminManager(
-                this.sucursalesManager, this.reportesManager, this.auditoriaManager
-            );
-        }
-        await this.sucursalesManager.cargarSucursales();
-        const contenedor = document.getElementById('superAdminContenido');
-        if (contenedor) {
-            await this.superAdminManager.renderizar(contenedor);
-        }
     }
 
     inicializarEventListeners() {
@@ -764,7 +804,7 @@ class TiendaApp {
     }
 
     _toggleCamposEditarGranel() {
-        const esGranel       = document.getElementById('editEsGranel')?.checked;
+        const esGranel        = document.getElementById('editEsGranel')?.checked;
         const labelEditStock  = document.getElementById('labelEditStock');
         const labelEditPrecioV = document.getElementById('labelEditPrecioVenta');
         if (labelEditStock)   labelEditStock.textContent   = esGranel ? 'Kilos disponibles' : 'Stock';
@@ -1739,7 +1779,6 @@ class TiendaApp {
 
         this._actualizarVistaTerminales();
 
-        // Bind form terminal
         const formTerminal = document.getElementById('formTerminal');
         if (formTerminal && !formTerminal.dataset.bound) {
             formTerminal.dataset.bound = 'true';
