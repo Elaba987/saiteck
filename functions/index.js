@@ -2,6 +2,7 @@
 // Proxy seguro para la API de Mercado Pago Point (Orders API v1)
 // Despliega con: firebase deploy --only functions
 
+/////////AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
 const { onRequest } = require('firebase-functions/v2/https');
 const { setGlobalOptions } = require('firebase-functions/v2');
 const admin = require('firebase-admin');
