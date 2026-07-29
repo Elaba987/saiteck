@@ -1,5 +1,8 @@
 {
   "projects": {
-    "default": "sistema-inventarios-1609c"
-  }
+    "default": "saiteck-pos-db907",
+    "saiteck": "saiteck-pos-db907"
+  },
+  "targets": {},
+  "etags": {}
 }

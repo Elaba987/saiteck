@@ -1,5 +1,6 @@
 // functions/index.js
 // Proxy seguro para la API de Mercado Pago Point (Orders API v1)
+// Proyecto: saiteck-pos-db907
 // Despliega con: firebase deploy --only functions
 
 const { onRequest } = require('firebase-functions/v2/https');
@@ -12,11 +13,21 @@ admin.initializeApp();
 // Región donde se desplegará la función
 setGlobalOptions({ region: 'us-central1' });
 
-// Access Token de Mercado Pago (modo prueba)
-// Para producción usa: firebase functions:secrets:set MERCADOPAGO_ACCESS_TOKEN
-const MP_TOKEN = () =>
-    process.env.MERCADOPAGO_ACCESS_TOKEN ||
-    'APP_USR-1092455173337722-060523-1e9533e9a8dd66757579f5f653dd74f1-3452805753';
+// ─────────────────────────────────────────────────────────────────────────
+// Access Token de Mercado Pago
+// Se obtiene EXCLUSIVAMENTE desde Secret Manager, nunca hardcodeado.
+// Configúralo con:
+//   firebase functions:secrets:set MERCADOPAGO_ACCESS_TOKEN
+// ─────────────────────────────────────────────────────────────────────────
+const MP_TOKEN = () => {
+    const token = process.env.MERCADOPAGO_ACCESS_TOKEN;
+    if (!token) {
+        throw new Error(
+            'MERCADOPAGO_ACCESS_TOKEN no está configurado. Ejecuta: firebase functions:secrets:set MERCADOPAGO_ACCESS_TOKEN'
+        );
+    }
+    return token;
+};
 
 // ─── Helper: llamada HTTPS a MP ───────────────────────────────────────────────
 function mpRequest(method, path, body, idempotencyKey) {
@@ -74,7 +85,8 @@ function mpRequest(method, path, body, idempotencyKey) {
 exports.mpPoint = onRequest(
     {
         cors: true,
-        region: 'us-central1'
+        region: 'us-central1',
+        secrets: ['MERCADOPAGO_ACCESS_TOKEN']
     },
     async (req, res) => {
 

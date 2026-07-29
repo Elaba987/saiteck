@@ -17,8 +17,8 @@
 
 export class MercadoPagoManager {
     constructor() {
-        // URL de la Cloud Function proxy
-        this._proxyUrl = 'https://us-central1-sistema-inventarios-1609c.cloudfunctions.net/mpPoint';
+        // URL de la Cloud Function proxy (proyecto: saiteck-pos-db907)
+        this._proxyUrl = 'https://us-central1-saiteck-pos-db907.cloudfunctions.net/mpPoint';
 
         this._orderActual    = null;   // { id, terminalId, monto, status, externalRef }
         this._pollingTimer   = null;

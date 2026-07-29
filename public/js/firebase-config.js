@@ -1,12 +1,13 @@
-// firebase-config.js - Configuración de Firebase (Sincronizado con Sistema Inventarios)
+// firebase-config.js - Configuración de Firebase (Proyecto: saiteck-pos-db907)
 
 const firebaseConfig = {
-  apiKey: "AIzaSyBF2s_tR7kg_Tpr1LgWvPayesZR7ouP_t8",
-  authDomain: "sistema-inventarios-1609c.firebaseapp.com",
-  projectId: "sistema-inventarios-1609c",
-  storageBucket: "sistema-inventarios-1609c.firebasestorage.app",
-  messagingSenderId: "122614933440",
-  appId: "1:122614933440:web:2bd239c9be16b188a58a25"
+  apiKey: "AIzaSyAUoRXQtF57BP8xrgC9CinIgNuNmVbnrMg",
+  authDomain: "saiteck-pos-db907.firebaseapp.com",
+  projectId: "saiteck-pos-db907",
+  storageBucket: "saiteck-pos-db907.firebasestorage.app",
+  messagingSenderId: "537929339496",
+  appId: "1:537929339496:web:a04a12f3984e449f1fe1dd",
+  measurementId: "G-HEX187R6BS"
 };
 
 // Inicializar Firebase utilizando la sintaxis tradicional (SDK v8) compatible con tu app
