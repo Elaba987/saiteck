@@ -13,6 +13,7 @@ import { AuditoriaManager }    from './modules/auditoria.js';
 import { AdminPanelManager }   from './modules/adminPanel.js';
 import { TerminalesManager }   from './modules/terminales.js';
 import { MercadoPagoManager }  from './modules/mercadopago.js';
+import { PedidosManager }      from './modules/pedidos.js';
 
 // Detectar si estamos en modo prueba (Access Token empieza con APP_USR o TEST)
 const MP_IS_TEST_MODE = true; // Cambiar a false en producción
@@ -22,7 +23,8 @@ class TiendaApp {
         this.productosManager    = new ProductosManager();
         this.ventasManager       = new VentasManager();
         this.proveedoresManager  = new ProveedoresManager();
-        this.reportesManager     = new ReportesManager(this.ventasManager);
+        this.pedidosManager      = new PedidosManager();
+        this.reportesManager     = new ReportesManager(this.ventasManager, this.pedidosManager);
         this.dashboardManager    = new DashboardManager(
             this.productosManager,
             this.proveedoresManager,
@@ -44,6 +46,17 @@ class TiendaApp {
         this._pagoTarjetaActivo    = false;
         this._terminalSeleccionada = null;  // { id (Firestore), terminalId (MP), nombre }
 
+        // ── Estado del detalle de proveedor (catálogo / lista frecuente / historiales) ──
+        this._proveedorDetalleActual = null;
+
+        // ── Estado del modal multipropósito de pedido/catálogo ──
+        // modo: 'nuevo' | 'editar' | 'frecuente'
+        this._modoPedidoModal   = 'nuevo';
+        this._pedidoEditandoId  = null;
+
+        // ── Estado del modal de recepción (checklist) ──
+        this._pedidoRecepcionId = null;
+
         this.init();
     }
 
@@ -57,6 +70,10 @@ class TiendaApp {
         this.inicializarModalNIP();
         this.inicializarEscaner();
         this.inicializarFormulariosColapsables();
+
+        this.inicializarDetalleProveedor();
+        this.inicializarPedidos();
+        this.inicializarRecepcionPedido();
 
         setTimeout(() => {
             this.configuracionManager.inicializar(this.auditoriaManager);
@@ -127,6 +144,8 @@ class TiendaApp {
             this.ventasManager.setAuditoriaManager(this.auditoriaManager);
             this.proveedoresManager.setAuditoriaManager(this.auditoriaManager);
             this.terminalesManager.setAuditoriaManager(this.auditoriaManager);
+            this.pedidosManager.setAuditoriaManager(this.auditoriaManager);
+            this.pedidosManager.setProductosManager(this.productosManager); // ← clave: stock real al recibir
 
             this.adminPanelManager = new AdminPanelManager(
                 this.auditoriaManager,
@@ -144,13 +163,21 @@ class TiendaApp {
                 this.productosManager.cargarProductos(),
                 this.ventasManager.cargarVentas(),
                 this.proveedoresManager.cargarProveedores(),
-                this.terminalesManager.cargarTerminales()
+                this.terminalesManager.cargarTerminales(),
+                this.pedidosManager.cargarPedidos(),
+                this.proveedoresManager.cargarVisitas()
             ]);
 
             this.productosManager.iniciarEscucha(() => {
                 this.actualizarVistaProductos();
                 this.actualizarSelectVentas();
                 this.actualizarDashboard();
+                // Los precios/nombres del catálogo y la lista frecuente se leen en vivo:
+                // si el modal de detalle está abierto, refrescamos sus pestañas.
+                if (this._proveedorDetalleActual) {
+                    this._refrescarCatalogoDetalle();
+                    this._refrescarListaFrecuenteDetalle();
+                }
             });
             this.proveedoresManager.iniciarEscucha(() => {
                 this.actualizarVistaProveedores();
@@ -162,11 +189,19 @@ class TiendaApp {
             this.terminalesManager.iniciarEscucha(() => {
                 this._actualizarVistaTerminales();
             });
+            this.pedidosManager.iniciarEscucha(() => {
+                this.actualizarVistaPedidos();
+                if (this._proveedorDetalleActual) this._refrescarHistorialComprasDetalle();
+            });
+            this.proveedoresManager.iniciarEscuchaVisitas(() => {
+                if (this._proveedorDetalleActual) this._refrescarHistorialVisitasDetalle();
+            });
 
             this.actualizarDashboard();
             this.actualizarVistaProductos();
             this.actualizarVistaProveedores();
             this.actualizarSelectVentas();
+            this.actualizarVistaPedidos();
             this.actualizarMenuSegunPermisos();
             this.actualizarInfoUsuarioEnConfiguracion();
             this.datosInicializados = true;
@@ -392,7 +427,10 @@ class TiendaApp {
             { id: 'modalEditarProveedor', cerrarId: 'cerrarModalEditarProveedor' },
             { id: 'modalSiguienteVisita', cerrarId: 'cerrarModalSiguienteVisita' },
             { id: 'modalTerminal',        cerrarId: 'cerrarModalTerminal' },
-            { id: 'modalCobrarTarjeta',   cerrarId: 'cerrarModalCobrarTarjeta' }
+            { id: 'modalCobrarTarjeta',   cerrarId: 'cerrarModalCobrarTarjeta' },
+            { id: 'modalDetalleProveedor', cerrarId: 'cerrarModalDetalleProveedor' },
+            { id: 'modalPedidoCatalogo',   cerrarId: 'cerrarModalPedidoCatalogo' },
+            { id: 'modalRecepcionPedido',  cerrarId: 'cerrarModalRecepcionPedido' }
         ];
         modales.forEach(({ id, cerrarId }) => {
             const modal     = document.getElementById(id);
@@ -430,6 +468,7 @@ class TiendaApp {
                 if (seccion === 'reportes')       this.mostrarOpcionesReporte();
                 if (seccion === 'administracion') this._activarAdminPanel();
                 if (seccion === 'configuracion')  this._actualizarVistaTerminales();
+                if (seccion === 'proveedores')    this.actualizarVistaPedidos(); // Pedidos vive embebido aquí
             }
         });
         document.getElementById('statsGrid').addEventListener('click', (e) => {
@@ -582,7 +621,7 @@ class TiendaApp {
         const resultado = await this.productosManager.actualizar(productoId, datos);
         if (resultado.success) {
             this.cerrarModal('modalEditarProducto');
-            this.uiManager.alerta('Producto actualizado exitosamente');
+            this.uiManager.alerta('Producto actualizado exitosamente. Los cambios de nombre/precio se reflejan automáticamente en Catálogos, Listas Frecuentes y Pedidos.');
         } else {
             this.uiManager.alerta(resultado.message);
         }
@@ -1155,7 +1194,6 @@ class TiendaApp {
 
         if (iconoEl) {
             iconoEl.textContent = info.icono;
-            // Detener animación en estados terminales
             if (['processed', 'canceled', 'expired', 'failed'].includes(estado)) {
                 iconoEl.classList.add('static');
             } else {
@@ -1175,16 +1213,11 @@ class TiendaApp {
         };
         if (subEl) subEl.textContent = subs[estado] || '';
 
-        // Mostrar botón confirmar solo cuando el pago fue procesado
         if (btnConf) {
-            if (estado === 'processed') {
-                btnConf.classList.remove('hidden');
-            } else {
-                btnConf.classList.add('hidden');
-            }
+            if (estado === 'processed') btnConf.classList.remove('hidden');
+            else btnConf.classList.add('hidden');
         }
 
-        // Deshabilitar cancelar en estados terminales
         if (btnCancel) {
             if (['processed', 'canceled', 'expired', 'failed'].includes(estado)) {
                 btnCancel.disabled    = true;
@@ -1192,16 +1225,11 @@ class TiendaApp {
             }
         }
 
-        // Ocultar barra de progreso en estados terminales
         if (['processed', 'canceled', 'expired', 'failed'].includes(estado)) {
             if (barEl) barEl.style.display = 'none';
         }
     }
 
-    /**
-     * Simula un cambio de estado de la order (solo modo prueba).
-     * En producción, el estado cambia automáticamente via polling.
-     */
     _simularEstado(estado) {
         this.mercadoPagoManager.detenerPolling();
         const order = this.mercadoPagoManager.obtenerOrderActual();
@@ -1237,7 +1265,6 @@ class TiendaApp {
             });
 
             if (!resultado.success) {
-                // Si no se pudo cancelar por API (ej: ya está at_terminal), avisar
                 this.uiManager.alerta(`ℹ️ ${resultado.mensaje}`);
             }
         }
@@ -1295,9 +1322,11 @@ class TiendaApp {
             const btn = e.target.closest('button');
             if (!btn) return;
             const { accion, id } = btn.dataset;
-            if (accion === 'eliminar-proveedor') this.eliminarProveedor(id);
-            if (accion === 'marcar-visita')       this.marcarVisita(id);
-            if (accion === 'editar-proveedor')    this.mostrarModalEditarProveedor(id);
+            if (accion === 'eliminar-proveedor')     this.eliminarProveedor(id);
+            if (accion === 'marcar-visita')          this.marcarVisita(id);
+            if (accion === 'editar-proveedor')       this.mostrarModalEditarProveedor(id);
+            if (accion === 'ver-detalle-proveedor')  this.mostrarModalDetalleProveedor(id);
+            if (accion === 'pedido-frecuente-rapido') this.crearPedidoRapidoFrecuente(id);
         });
 
         document.getElementById('formEditarProveedor').addEventListener('submit', (e) => {
@@ -1471,16 +1500,514 @@ class TiendaApp {
     }
 
     // ============================================================
-    // REPORTES
+    // DETALLE DE PROVEEDOR (Catálogo / Lista Frecuente / Historial Visitas / Historial Compras)
+    // ============================================================
+    inicializarDetalleProveedor() {
+        document.getElementById('detalleProveedorTabs')?.addEventListener('click', (e) => {
+            const tabBtn = e.target.closest('[data-tab]');
+            if (!tabBtn) return;
+            this._cambiarTabDetalleProveedor(tabBtn.dataset.tab);
+        });
+
+        // Formulario: agregar producto al catálogo (SOLO selección de producto, sin precio propio)
+        document.getElementById('formCatalogoProducto')?.addEventListener('submit', (e) => {
+            e.preventDefault();
+            this._agregarProductoAlCatalogo();
+        });
+
+        document.getElementById('tablaCatalogoProveedor')?.addEventListener('click', (e) => {
+            const btn = e.target.closest('button');
+            if (!btn) return;
+            const { accion, clave } = btn.dataset;
+            if (accion === 'quitar-producto-catalogo') this._quitarProductoDelCatalogo(clave);
+        });
+
+        document.getElementById('btnCrearPedidoDesdeDetalle')?.addEventListener('click', () => {
+            if (!this._proveedorDetalleActual) return;
+            this.cerrarModal('modalDetalleProveedor');
+            this.abrirModalPedidoCatalogo(this._proveedorDetalleActual.id, 'nuevo');
+        });
+
+        // Botones de la pestaña "Lista Frecuente" (delegados porque se re-renderizan)
+        document.getElementById('panelDetalle_frecuente')?.addEventListener('click', (e) => {
+            if (e.target.id === 'btnEditarListaFrecuente') {
+                this.cerrarModal('modalDetalleProveedor');
+                this.abrirModalPedidoCatalogo(this._proveedorDetalleActual.id, 'frecuente');
+            }
+            if (e.target.id === 'btnEliminarListaFrecuente') {
+                this._eliminarListaFrecuenteDetalle();
+            }
+        });
+    }
+
+    mostrarModalDetalleProveedor(id) {
+        const proveedor = this.proveedoresManager.obtenerPorId(id);
+        if (!proveedor) { this.uiManager.alerta('Proveedor no encontrado'); return; }
+
+        this._proveedorDetalleActual = proveedor;
+
+        document.getElementById('detalleProveedorNombre').textContent   = proveedor.nombre;
+        document.getElementById('detalleProveedorTelefono').textContent = proveedor.telefono || 'Sin teléfono';
+        document.getElementById('detalleProveedorEmail').textContent    = proveedor.email    || 'Sin email';
+
+        this._poblarSelectProductosCatalogo();
+        this._refrescarCatalogoDetalle();
+        this._refrescarListaFrecuenteDetalle();
+        this._refrescarHistorialVisitasDetalle();
+        this._refrescarHistorialComprasDetalle();
+        this._cambiarTabDetalleProveedor('catalogo');
+
+        this.abrirModal('modalDetalleProveedor');
+    }
+
+    _cambiarTabDetalleProveedor(tab) {
+        document.querySelectorAll('#detalleProveedorTabs [data-tab]').forEach(btn => {
+            btn.classList.toggle('active', btn.dataset.tab === tab);
+        });
+        ['catalogo', 'frecuente', 'visitas', 'compras'].forEach(t => {
+            document.getElementById(`panelDetalle_${t}`)?.classList.toggle('hidden', t !== tab);
+        });
+    }
+
+    _poblarSelectProductosCatalogo() {
+        const select = document.getElementById('catalogoProductoSelect');
+        if (!select) return;
+        const productos = this.productosManager.obtenerTodos();
+        select.innerHTML = '<option value="">-- Seleccione un producto --</option>' +
+            productos.map(p => `<option value="${p.clave}">${p.nombre} (Clave: ${p.clave})</option>`).join('');
+    }
+
+    /** Resuelve el catálogo crudo (solo claves) del proveedor contra Productos EN VIVO */
+    _resolverCatalogo(proveedorId) {
+        const claves = this.proveedoresManager.obtenerProductosAsociados(proveedorId);
+        return claves.map(c => {
+            const producto = this.productosManager.obtenerPorClave(c.productoClave);
+            return {
+                productoClave:  c.productoClave,
+                productoNombre: producto ? producto.nombre : `Producto #${c.productoClave}`,
+                precioCompra:   producto ? producto.precioCompra : 0,
+                existe:         !!producto
+            };
+        });
+    }
+
+    /** Resuelve la lista frecuente cruda del proveedor contra Productos EN VIVO */
+    _resolverListaFrecuente(proveedorId) {
+        const items = this.proveedoresManager.obtenerListaFrecuente(proveedorId);
+        return items.map(i => {
+            const producto = this.productosManager.obtenerPorClave(i.productoClave);
+            return {
+                productoClave:  i.productoClave,
+                productoNombre: producto ? producto.nombre : `Producto #${i.productoClave}`,
+                precioCompra:   producto ? producto.precioCompra : 0,
+                cantidad:       i.cantidad,
+                existe:         !!producto
+            };
+        });
+    }
+
+    _refrescarCatalogoDetalle() {
+        if (!this._proveedorDetalleActual) return;
+        const proveedorActualizado = this.proveedoresManager.obtenerPorId(this._proveedorDetalleActual.id);
+        if (proveedorActualizado) this._proveedorDetalleActual = proveedorActualizado;
+        const contenedor = document.getElementById('tablaCatalogoProveedor');
+        this.uiManager.renderizarCatalogoProveedor(this._resolverCatalogo(this._proveedorDetalleActual.id), contenedor);
+    }
+
+    _refrescarListaFrecuenteDetalle() {
+        if (!this._proveedorDetalleActual) return;
+        const contenedor = document.getElementById('panelDetalle_frecuente');
+        this.uiManager.renderizarListaFrecuente(this._resolverListaFrecuente(this._proveedorDetalleActual.id), contenedor);
+    }
+
+    _refrescarHistorialVisitasDetalle() {
+        if (!this._proveedorDetalleActual) return;
+        const visitas    = this.proveedoresManager.obtenerHistorialVisitas(this._proveedorDetalleActual.id);
+        const contenedor = document.getElementById('panelDetalle_visitas');
+        this.uiManager.renderizarHistorialVisitas(visitas, contenedor);
+    }
+
+    _refrescarHistorialComprasDetalle() {
+        if (!this._proveedorDetalleActual) return;
+        const compras    = this.pedidosManager.obtenerHistorialComprasPorProveedor(this._proveedorDetalleActual.id);
+        const contenedor = document.getElementById('panelDetalle_compras');
+        this.uiManager.renderizarHistorialComprasProveedor(compras, contenedor);
+    }
+
+    async _agregarProductoAlCatalogo() {
+        if (!this._proveedorDetalleActual) return;
+
+        const clave    = document.getElementById('catalogoProductoSelect').value;
+        const producto = this.productosManager.obtenerPorClave(clave);
+
+        if (!producto) { this.uiManager.alerta('Selecciona un producto válido'); return; }
+
+        const resultado = await this.proveedoresManager.agregarProductoAsociado(this._proveedorDetalleActual.id, producto.clave);
+
+        if (resultado.success) {
+            document.getElementById('formCatalogoProducto').reset();
+            this._refrescarCatalogoDetalle();
+            this.actualizarVistaProveedores();
+        } else {
+            this.uiManager.alerta(resultado.message);
+        }
+    }
+
+    async _quitarProductoDelCatalogo(clave) {
+        if (!this._proveedorDetalleActual) return;
+        if (!this.uiManager.confirmar('¿Quitar este producto del catálogo del proveedor?')) return;
+
+        const resultado = await this.proveedoresManager.eliminarProductoAsociado(this._proveedorDetalleActual.id, clave);
+
+        if (resultado.success) {
+            this._refrescarCatalogoDetalle();
+            this.actualizarVistaProveedores();
+        } else {
+            this.uiManager.alerta(resultado.message);
+        }
+    }
+
+    async _eliminarListaFrecuenteDetalle() {
+        if (!this._proveedorDetalleActual) return;
+        if (!this.uiManager.confirmar('¿Eliminar la lista frecuente de este proveedor?')) return;
+
+        const resultado = await this.proveedoresManager.eliminarListaFrecuente(this._proveedorDetalleActual.id);
+        if (resultado.success) {
+            this._refrescarListaFrecuenteDetalle();
+            this.actualizarVistaProveedores();
+        } else {
+            this.uiManager.alerta(resultado.message);
+        }
+    }
+
+    // ============================================================
+    // MODAL MULTIPROPÓSITO: NUEVO PEDIDO / EDITAR PEDIDO / LISTA FRECUENTE
+    // Los tres reutilizan el mismo selector de catálogo con cantidades.
+    // ============================================================
+    inicializarPedidos() {
+        document.getElementById('btnNuevoPedidoCatalogo')?.addEventListener('click', () => {
+            this.abrirModalPedidoCatalogo(null, 'nuevo');
+        });
+
+        document.getElementById('pedidoCatalogoProveedor')?.addEventListener('change', (e) => {
+            this._cargarCatalogoEnModalPedido(e.target.value);
+        });
+
+        document.getElementById('btnCrearPedidoCatalogo')?.addEventListener('click', () => {
+            this._confirmarModalPedidoCatalogo();
+        });
+
+        document.getElementById('listaPedidosPendientes')?.addEventListener('click', (e) => {
+            const btn = e.target.closest('button');
+            if (!btn) return;
+            const { accion, id } = btn.dataset;
+            if (accion === 'completar-pedido')       this.abrirModalRecepcionPedido(id);
+            if (accion === 'descargar-pedido')        this._descargarPedido(id);
+            if (accion === 'editar-pedido')            this._editarPedido(id);
+            if (accion === 'guardar-frecuente-pedido') this._guardarPedidoComoFrecuente(id);
+            if (accion === 'eliminar-pedido')          this._eliminarPedido(id);
+        });
+    }
+
+    actualizarVistaPedidos() {
+        const puedeVerPedidos = this.usuariosManager.tienePermiso('pedidos');
+        const seccionPedidos  = document.getElementById('seccionPedidosEmbebida');
+        if (seccionPedidos) seccionPedidos.style.display = puedeVerPedidos ? 'block' : 'none';
+        if (!puedeVerPedidos) return;
+
+        const pendientes = this.pedidosManager.obtenerTodos().filter(p => !p.completado);
+        const contenedor = document.getElementById('listaPedidosPendientes');
+        this.uiManager.renderizarTablaPedidos(pendientes, contenedor);
+
+        const puedeGestionar = this.usuariosManager.tienePermiso('pedidos_gestionar');
+        const btnNuevo = document.getElementById('btnNuevoPedidoCatalogo');
+        if (btnNuevo) btnNuevo.style.display = puedeGestionar ? 'inline-flex' : 'none';
+    }
+
+    /**
+     * @param {string|null} proveedorIdPreset - si se da, el select queda fijo en ese proveedor
+     * @param {'nuevo'|'editar'|'frecuente'} modo
+     * @param {string|null} pedidoId - requerido si modo === 'editar'
+     */
+    abrirModalPedidoCatalogo(proveedorIdPreset = null, modo = 'nuevo', pedidoId = null) {
+        if (!this.usuariosManager.tienePermiso('pedidos_gestionar')) {
+            this.uiManager.alerta('❌ No tienes permiso para gestionar pedidos');
+            return;
+        }
+
+        this._modoPedidoModal  = modo;
+        this._pedidoEditandoId = pedidoId;
+
+        const titulo  = document.querySelector('#modalPedidoCatalogo .modal-header h3');
+        const btnConfirmar = document.getElementById('btnCrearPedidoCatalogo');
+        const textosPorModo = {
+            'nuevo':     { titulo: '🛒 Nuevo Pedido desde Catálogo', boton: '✅ Crear Pedido' },
+            'editar':    { titulo: '✏️ Editar Pedido',                boton: '💾 Guardar Cambios' },
+            'frecuente': { titulo: '⭐ Editar Lista Frecuente',        boton: '💾 Guardar Lista Frecuente' }
+        };
+        if (titulo)       titulo.textContent = textosPorModo[modo].titulo;
+        if (btnConfirmar) btnConfirmar.textContent = textosPorModo[modo].boton;
+
+        const select = document.getElementById('pedidoCatalogoProveedor');
+        const proveedores = this.proveedoresManager.obtenerTodos();
+        select.innerHTML = '<option value="">-- Selecciona un proveedor --</option>' +
+            proveedores.map(p => `<option value="${p.id}">${p.nombre}</option>`).join('');
+
+        // En "editar" y "frecuente" el proveedor queda fijo (no tiene sentido cambiarlo)
+        select.disabled = (modo !== 'nuevo');
+
+        if (proveedorIdPreset) {
+            select.value = proveedorIdPreset;
+            this._cargarCatalogoEnModalPedido(proveedorIdPreset);
+        } else {
+            document.getElementById('pedidoCatalogoContenedor').innerHTML =
+                '<p style="text-align:center;color:#718096;padding:20px;">Selecciona un proveedor para ver su catálogo.</p>';
+        }
+
+        this.abrirModal('modalPedidoCatalogo');
+    }
+
+    _cargarCatalogoEnModalPedido(proveedorId) {
+        const contenedor = document.getElementById('pedidoCatalogoContenedor');
+        if (!proveedorId) {
+            contenedor.innerHTML = '<p style="text-align:center;color:#718096;padding:20px;">Selecciona un proveedor para ver su catálogo.</p>';
+            return;
+        }
+
+        const catalogoResuelto = this._resolverCatalogo(proveedorId);
+
+        // Precargar cantidades según el modo (editar pedido / editar lista frecuente)
+        let cantidadesPorClave = {};
+        if (this._modoPedidoModal === 'editar' && this._pedidoEditandoId) {
+            const pedido = this.pedidosManager.obtenerPorId(this._pedidoEditandoId);
+            if (pedido) pedido.items.forEach(i => { cantidadesPorClave[i.productoClave] = i.cantidad; });
+        } else if (this._modoPedidoModal === 'frecuente') {
+            this.proveedoresManager.obtenerListaFrecuente(proveedorId).forEach(i => {
+                cantidadesPorClave[i.productoClave] = i.cantidad;
+            });
+        }
+
+        const itemsConCantidad = catalogoResuelto.map(item => ({
+            ...item,
+            cantidadInicial: cantidadesPorClave[item.productoClave] || 0
+        }));
+
+        this.uiManager.renderizarSelectorPedidoDesdeCatalogo(itemsConCantidad, contenedor);
+    }
+
+    async _confirmarModalPedidoCatalogo() {
+        const proveedorId = document.getElementById('pedidoCatalogoProveedor').value;
+        if (!proveedorId) { this.uiManager.alerta('Selecciona un proveedor'); return; }
+
+        const proveedor = this.proveedoresManager.obtenerPorId(proveedorId);
+        if (!proveedor) { this.uiManager.alerta('Proveedor no encontrado'); return; }
+
+        const inputs = document.querySelectorAll('#pedidoCatalogoContenedor .input-cantidad-catalogo');
+        const itemsCatalogo = Array.from(inputs).map(input => ({
+            productoClave:  input.dataset.claveCatalogo,
+            productoNombre: input.dataset.nombreCatalogo,
+            precioCompra:   input.dataset.precioCatalogo,
+            cantidad:       input.value
+        }));
+
+        let resultado;
+
+        if (this._modoPedidoModal === 'nuevo') {
+            resultado = await this.pedidosManager.crearPedidoDesdeCatalogo(proveedor, itemsCatalogo);
+        } else if (this._modoPedidoModal === 'editar') {
+            resultado = await this.pedidosManager.actualizarItemsPedido(this._pedidoEditandoId, itemsCatalogo);
+        } else if (this._modoPedidoModal === 'frecuente') {
+            resultado = await this.proveedoresManager.guardarListaFrecuente(
+                proveedorId,
+                itemsCatalogo.map(i => ({ productoClave: i.productoClave, cantidad: i.cantidad }))
+            );
+        }
+
+        if (resultado.success) {
+            this.cerrarModal('modalPedidoCatalogo');
+            const mensajes = {
+                'nuevo':     '✅ Pedido creado correctamente',
+                'editar':    '✅ Pedido actualizado correctamente',
+                'frecuente': '✅ Lista frecuente guardada. Estará disponible mientras este proveedor tenga una visita programada.'
+            };
+            this.uiManager.alerta(mensajes[this._modoPedidoModal]);
+            this.actualizarVistaPedidos();
+            this.actualizarVistaProveedores();
+            if (this._proveedorDetalleActual?.id === proveedorId) {
+                this._refrescarCatalogoDetalle();
+                this._refrescarListaFrecuenteDetalle();
+            }
+        } else {
+            this.uiManager.alerta(resultado.message);
+        }
+    }
+
+    _descargarPedido(id) {
+        const pedido = this.pedidosManager.obtenerPorId(id);
+        if (pedido) this.pedidosManager.descargarTicketPedido(pedido);
+    }
+
+    _editarPedido(id) {
+        const pedido = this.pedidosManager.obtenerPorId(id);
+        if (!pedido) return;
+        this.abrirModalPedidoCatalogo(pedido.proveedorId, 'editar', id);
+    }
+
+    async _guardarPedidoComoFrecuente(id) {
+        const pedido = this.pedidosManager.obtenerPorId(id);
+        if (!pedido) return;
+        if (!this.uiManager.confirmar(`¿Guardar los productos de este pedido como la Lista Frecuente de "${pedido.proveedorNombre}"? Esto reemplaza la lista anterior si existía.`)) return;
+
+        const items = pedido.items.map(i => ({ productoClave: i.productoClave, cantidad: i.cantidad }));
+        const resultado = await this.proveedoresManager.guardarListaFrecuente(pedido.proveedorId, items);
+
+        if (resultado.success) {
+            this.uiManager.alerta('⭐ Lista frecuente guardada correctamente');
+            this.actualizarVistaProveedores();
+        } else {
+            this.uiManager.alerta(resultado.message);
+        }
+    }
+
+    async _eliminarPedido(id) {
+        if (!this.usuariosManager.tienePermiso('pedidos_gestionar')) {
+            this.uiManager.alerta('❌ No tienes permiso para eliminar pedidos');
+            return;
+        }
+        if (!this.uiManager.confirmar('¿Eliminar este pedido?')) return;
+        const resultado = await this.pedidosManager.eliminarPedido(id);
+        if (!resultado.success) this.uiManager.alerta(resultado.message);
+        else this.actualizarVistaPedidos();
+    }
+
+    /** Acceso rápido: crea un pedido nuevo usando la Lista Frecuente del proveedor tal cual está guardada */
+    async crearPedidoRapidoFrecuente(proveedorId) {
+        if (!this.usuariosManager.tienePermiso('pedidos_gestionar')) {
+            this.uiManager.alerta('❌ No tienes permiso para crear pedidos');
+            return;
+        }
+        const proveedor = this.proveedoresManager.obtenerPorId(proveedorId);
+        if (!proveedor) return;
+
+        const listaFrecuente = this.proveedoresManager.obtenerListaFrecuente(proveedorId);
+        if (listaFrecuente.length === 0) {
+            this.uiManager.alerta('Este proveedor no tiene una lista frecuente guardada');
+            return;
+        }
+
+        const itemsCatalogo = listaFrecuente.map(li => {
+            const producto = this.productosManager.obtenerPorClave(li.productoClave);
+            return producto ? {
+                productoClave:  producto.clave,
+                productoNombre: producto.nombre,
+                precioCompra:   producto.precioCompra,
+                cantidad:       li.cantidad
+            } : null;
+        }).filter(Boolean);
+
+        if (itemsCatalogo.length === 0) {
+            this.uiManager.alerta('Los productos de la lista frecuente ya no existen en Productos');
+            return;
+        }
+
+        if (!this.uiManager.confirmar(`¿Crear un nuevo pedido a "${proveedor.nombre}" con los ${itemsCatalogo.length} producto(s) de su lista frecuente?`)) return;
+
+        const resultado = await this.pedidosManager.crearPedidoDesdeCatalogo(proveedor, itemsCatalogo);
+        if (resultado.success) {
+            this.uiManager.alerta('✅ Pedido frecuente creado');
+            this.actualizarVistaPedidos();
+        } else {
+            this.uiManager.alerta(resultado.message);
+        }
+    }
+
+    // ============================================================
+    // RECEPCIÓN DE PEDIDO (checklist con cantidad y precio reales)
+    // ============================================================
+    inicializarRecepcionPedido() {
+        document.getElementById('chkMarcarTodoRecibido')?.addEventListener('change', (e) => {
+            document.querySelectorAll('.chk-item-recibido').forEach(chk => { chk.checked = e.target.checked; });
+        });
+
+        // Delegación: el checkbox "marcar todo" vive dentro del contenedor que se re-renderiza
+        document.getElementById('recepcionPedidoContenedor')?.addEventListener('change', (e) => {
+            if (e.target.id === 'chkMarcarTodoRecibido') {
+                document.querySelectorAll('.chk-item-recibido').forEach(chk => { chk.checked = e.target.checked; });
+            }
+        });
+
+        document.getElementById('btnConfirmarRecepcionPedido')?.addEventListener('click', () => {
+            this._confirmarRecepcionPedido();
+        });
+    }
+
+    abrirModalRecepcionPedido(pedidoId) {
+        if (!this.usuariosManager.tienePermiso('pedidos_gestionar')) {
+            this.uiManager.alerta('❌ No tienes permiso para recibir pedidos');
+            return;
+        }
+        const pedido = this.pedidosManager.obtenerPorId(pedidoId);
+        if (!pedido) { this.uiManager.alerta('Pedido no encontrado'); return; }
+
+        this._pedidoRecepcionId = pedidoId;
+
+        document.getElementById('recepcionPedidoProveedor').textContent = pedido.proveedorNombre;
+        const contenedor = document.getElementById('recepcionPedidoContenedor');
+        this.uiManager.renderizarChecklistRecepcion(pedido, contenedor);
+
+        this.abrirModal('modalRecepcionPedido');
+    }
+
+    async _confirmarRecepcionPedido() {
+        if (!this._pedidoRecepcionId) return;
+
+        const filas = document.querySelectorAll('#recepcionPedidoContenedor .recepcion-item-row');
+        const itemsRecibidos = Array.from(filas).map(fila => {
+            const inputCantidad = fila.querySelector('.input-cantidad-recibida');
+            const inputPrecio   = fila.querySelector('.input-precio-recibido');
+            const chkRecibido   = fila.querySelector('.chk-item-recibido');
+            return {
+                productoClave:  inputCantidad.dataset.clave,
+                productoNombre: inputCantidad.dataset.nombre,
+                cantidad:       inputCantidad.value,
+                precioCompra:   inputPrecio.value,
+                recibido:       chkRecibido.checked
+            };
+        });
+
+        const resultado = await this.pedidosManager.completarPedido(this._pedidoRecepcionId, itemsRecibidos);
+
+        if (resultado.success) {
+            this.cerrarModal('modalRecepcionPedido');
+            this.uiManager.alerta('✅ Pedido recibido. El stock de los productos marcados ya fue actualizado.');
+            this.actualizarVistaPedidos();
+            this.actualizarVistaProductos();
+            this.actualizarDashboard();
+            if (this._proveedorDetalleActual) this._refrescarHistorialComprasDetalle();
+            this._pedidoRecepcionId = null;
+        } else {
+            this.uiManager.alerta(resultado.message);
+        }
+    }
+
+    // ============================================================
+    // REPORTES (Ventas, Compras a Proveedores y Entradas/Salidas)
     // ============================================================
     inicializarReportes() {
+        document.getElementById('tipoDatoReporte')?.addEventListener('change', () => this.mostrarOpcionesReporte());
         document.getElementById('tipoReporte').addEventListener('change', () => this.mostrarOpcionesReporte());
         document.getElementById('btnGenerarReporte').addEventListener('click', () => this.generarReporte());
     }
 
     mostrarOpcionesReporte() {
-        const tipo          = document.getElementById('tipoReporte').value;
-        const opcionesFecha = document.getElementById('opcionesFecha');
+        const tipoDato       = document.getElementById('tipoDatoReporte')?.value || 'ventas';
+        const tipo           = document.getElementById('tipoReporte').value;
+        const opcionesFecha  = document.getElementById('opcionesFecha');
+
+        // El filtro de proveedor solo aplica al reporte de Compras
+        document.getElementById('opcionProveedorReporte')?.classList.toggle('hidden', tipoDato !== 'compras');
+        if (tipoDato === 'compras') this._poblarSelectProveedorReporte();
+
         ['opcionFechaEspecifica','opcionRangoFechas','opcionMesEspecifico','opcionAñoEspecifico']
             .forEach(id => document.getElementById(id)?.classList.add('hidden'));
 
@@ -1499,7 +2026,37 @@ class TiendaApp {
         }
     }
 
+    _poblarSelectProveedorReporte() {
+        const select = document.getElementById('proveedorReporteSelect');
+        if (!select || select.dataset.poblado === 'true') return;
+        const proveedores = this.proveedoresManager.obtenerTodos();
+        select.innerHTML = '<option value="">Todos los proveedores</option>' +
+            proveedores.map(p => `<option value="${p.id}">${p.nombre}</option>`).join('');
+        select.dataset.poblado = 'true';
+    }
+
+    _leerParametrosPeriodo(tipo) {
+        const parametros = {};
+        if (tipo === 'fecha') {
+            parametros.fecha = document.getElementById('fechaEspecifica').value;
+        } else if (tipo === 'rango') {
+            parametros.fechaInicio = document.getElementById('fechaInicio').value;
+            parametros.fechaFin    = document.getElementById('fechaFin').value;
+        } else if (tipo === 'mes-especifico') {
+            parametros.mes = document.getElementById('mesEspecifico').value;
+            parametros.año = document.getElementById('añoMesEspecifico').value;
+        } else if (tipo === 'año-especifico') {
+            parametros.año = document.getElementById('añoEspecifico').value;
+        }
+        return parametros;
+    }
+
     generarReporte() {
+        const tipoDato = document.getElementById('tipoDatoReporte')?.value || 'ventas';
+
+        if (tipoDato === 'compras') { this._generarReporteCompras(); return; }
+        if (tipoDato === 'flujo')   { this._generarReporteFlujo();   return; }
+
         if (!this.usuariosManager.tienePermiso('reportes_generar') &&
             !this.usuariosManager.tienePermiso('reportes_ventas')) {
             this.uiManager.alerta('❌ No tienes permisos para ver reportes');
@@ -1507,21 +2064,10 @@ class TiendaApp {
         }
 
         const tipo       = document.getElementById('tipoReporte').value;
-        const parametros = {};
+        const parametros = this._leerParametrosPeriodo(tipo);
 
-        if (tipo === 'fecha') {
-            parametros.fecha = document.getElementById('fechaEspecifica').value;
-            if (!parametros.fecha) { this.uiManager.alerta('Seleccione una fecha'); return; }
-        } else if (tipo === 'rango') {
-            parametros.fechaInicio = document.getElementById('fechaInicio').value;
-            parametros.fechaFin    = document.getElementById('fechaFin').value;
-            if (!parametros.fechaInicio || !parametros.fechaFin) { this.uiManager.alerta('Seleccione ambas fechas'); return; }
-        } else if (tipo === 'mes-especifico') {
-            parametros.mes = document.getElementById('mesEspecifico').value;
-            parametros.año = document.getElementById('añoMesEspecifico').value;
-        } else if (tipo === 'año-especifico') {
-            parametros.año = document.getElementById('añoEspecifico').value;
-        }
+        if (tipo === 'fecha' && !parametros.fecha) { this.uiManager.alerta('Seleccione una fecha'); return; }
+        if (tipo === 'rango' && (!parametros.fechaInicio || !parametros.fechaFin)) { this.uiManager.alerta('Seleccione ambas fechas'); return; }
 
         const reporte = this.reportesManager.generarReporte(tipo, parametros);
         if (reporte) {
@@ -1530,6 +2076,68 @@ class TiendaApp {
             this.uiManager.renderizarReporte(reporte, contenedor, todasVentas, this.reportesManager);
             this.inicializarEventListenersReporte(reporte, todasVentas);
         }
+    }
+
+    _generarReporteCompras() {
+        if (!this.usuariosManager.tienePermiso('pedidos_reportes')) {
+            this.uiManager.alerta('❌ No tienes permiso para ver reportes de compras');
+            return;
+        }
+
+        const tipo       = document.getElementById('tipoReporte').value;
+        const parametros = this._leerParametrosPeriodo(tipo);
+
+        if (tipo === 'fecha' && !parametros.fecha) { this.uiManager.alerta('Seleccione una fecha'); return; }
+        if (tipo === 'rango' && (!parametros.fechaInicio || !parametros.fechaFin)) { this.uiManager.alerta('Seleccione ambas fechas'); return; }
+
+        const proveedorId = document.getElementById('proveedorReporteSelect')?.value || null;
+        const reporte      = this.pedidosManager.generarReporteCompras(tipo, parametros, proveedorId || null);
+
+        const contenedorOriginal = document.getElementById('contenidoReporte');
+        const contenedor = contenedorOriginal.cloneNode(false);
+        contenedorOriginal.parentNode.replaceChild(contenedor, contenedorOriginal);
+
+        this.uiManager.renderizarReporteCompras(reporte, contenedor);
+
+        contenedor.addEventListener('click', (e) => {
+            const btn = e.target.closest('button[data-accion="descargar-pedido-reporte"]');
+            if (!btn) return;
+            const pedido = reporte.pedidos[parseInt(btn.dataset.index)];
+            if (pedido) this.pedidosManager.descargarTicketPedido(pedido);
+        });
+
+        this._insertarBotonExportarReporte(contenedor, () => this.pedidosManager.descargarReporteCompras(reporte));
+    }
+
+    _generarReporteFlujo() {
+        if (!this.usuariosManager.tienePermiso('reportes_generar')) {
+            this.uiManager.alerta('❌ No tienes permiso para ver este reporte');
+            return;
+        }
+
+        const tipo       = document.getElementById('tipoReporte').value;
+        const parametros = this._leerParametrosPeriodo(tipo);
+
+        if (tipo === 'fecha' && !parametros.fecha) { this.uiManager.alerta('Seleccione una fecha'); return; }
+        if (tipo === 'rango' && (!parametros.fechaInicio || !parametros.fechaFin)) { this.uiManager.alerta('Seleccione ambas fechas'); return; }
+
+        const reporte    = this.reportesManager.generarReporteFlujo(tipo, parametros);
+        const contenedor = document.getElementById('contenidoReporte');
+        this.uiManager.renderizarReporteFlujo(reporte, contenedor);
+    }
+
+    /** Inserta (o reutiliza) el botón "Exportar" arriba del contenedor de reporte */
+    _insertarBotonExportarReporte(contenedor, onClick) {
+        let btnExportar = document.getElementById('btnExportarReporteCompras');
+        if (!btnExportar) {
+            btnExportar = document.createElement('button');
+            btnExportar.id = 'btnExportarReporteCompras';
+            btnExportar.className = 'btn btn-success';
+            btnExportar.style.marginTop = '15px';
+            btnExportar.textContent = '📥 Exportar Reporte de Compras';
+            contenedor.parentElement.insertBefore(btnExportar, contenedor);
+        }
+        btnExportar.onclick = onClick;
     }
 
     inicializarEventListenersReporte(reporte, todasVentas) {
@@ -1619,10 +2227,6 @@ class TiendaApp {
         // El form se bindea en actualizarInfoUsuarioEnConfiguracion()
     }
 
-    /**
-     * Renderiza la sección de terminales en Configuración.
-     * Ahora el campo es "Terminal ID" (obtenido desde la app MP o el panel de desarrolladores).
-     */
     _actualizarVistaTerminales() {
         const contenedor = document.getElementById('seccionTerminalesContenido');
         if (!contenedor) return;
@@ -1644,10 +2248,8 @@ class TiendaApp {
                 </button>
             </div>
 
-            <!-- Lista de terminales de MP (se carga al pulsar el botón) -->
             <div id="mpApiTerminalsList" class="hidden"></div>
 
-            <!-- Terminales registradas en el sistema -->
             ${terminales.length === 0 ? `
                 <div style="text-align:center;padding:30px;color:#718096;background:#f7fafc;border-radius:10px;border:2px dashed #bee3f8;">
                     <p style="font-size:32px;">🖥️</p>
@@ -1705,9 +2307,6 @@ class TiendaApp {
         });
     }
 
-    /**
-     * Carga la lista de terminales desde la API de Mercado Pago y la muestra.
-     */
     async _cargarTerminalesDeMP() {
         const btn = document.getElementById('btnVerTerminalesMP');
         if (btn) { btn.disabled = true; btn.textContent = '🔄 Cargando...'; }
@@ -1757,7 +2356,6 @@ class TiendaApp {
                         </p>
                     </div>`;
 
-                // Botones para usar el ID directamente
                 listDiv.querySelectorAll('button[data-accion="usar-terminal-id"]').forEach(btn2 => {
                     btn2.addEventListener('click', () => {
                         const tid = btn2.dataset.terminalId;
@@ -1781,11 +2379,6 @@ class TiendaApp {
         }
     }
 
-    /**
-     * Abre el modal para agregar/editar una terminal.
-     * @param {string|null} id          - ID Firestore de la terminal (null = nueva)
-     * @param {string|null} terminalId  - Terminal ID de MP a pre-rellenar (opcional)
-     */
     abrirModalTerminal(id = null, terminalId = null) {
         const terminal = id ? this.terminalesManager.obtenerPorId(id) : null;
         const titulo   = document.getElementById('tituloModalTerminal');
@@ -1801,7 +2394,6 @@ class TiendaApp {
             document.getElementById('terminalNombre').value   = terminal.nombre;
             document.getElementById('terminalDeviceId').value = terminal.terminalId;
         } else if (terminalId) {
-            // Pre-rellenar desde la lista de MP
             document.getElementById('terminalDeviceId').value = terminalId;
             setTimeout(() => document.getElementById('terminalNombre')?.focus(), 100);
         }
@@ -1906,10 +2498,8 @@ class TiendaApp {
             }
         }
 
-        // Renderizar sección de terminales
         this._actualizarVistaTerminales();
 
-        // Bindear el form de terminal (solo una vez)
         const formTerminal = document.getElementById('formTerminal');
         if (formTerminal && !formTerminal.dataset.bound) {
             formTerminal.dataset.bound = 'true';
@@ -2055,7 +2645,7 @@ class TiendaApp {
         if (!contenedor) return;
         const permisosAgrupados = this.usuariosManager.obtenerPermisosAgrupados();
         const cuentaEsTotal     = this.usuariosManager.cuentaTieneAccesoTotal();
-        const gruposBloqueados  = cuentaEsTotal ? [] : ['Proveedores', 'Reportes'];
+        const gruposBloqueados  = cuentaEsTotal ? [] : ['Proveedores', 'Pedidos', 'Reportes'];
 
         let html = '';
         for (const [grupo, permisos] of Object.entries(permisosAgrupados)) {

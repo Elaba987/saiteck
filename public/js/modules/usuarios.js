@@ -7,7 +7,7 @@
 //            Inventario (productos), Ventas, Dashboard, Configuración
 //
 // TOTALES  → lo que puede hacer una cuenta con suscripción Pro
-//            Todo lo anterior + Proveedores + Reportes
+//            Todo lo anterior + Proveedores + Pedidos + Reportes
 // ─────────────────────────────────────────────────────────────
 const PERMISOS_BASICOS = [
     'dashboard',
@@ -34,6 +34,9 @@ const PERMISOS_TOTALES = [
     'reportes',
     'reportes_ventas',
     'reportes_generar',
+    'pedidos',
+    'pedidos_gestionar',
+    'pedidos_reportes',
     'configuracion',
     'configuracion_colores'
 ];
@@ -58,6 +61,9 @@ export class UsuariosManager {
             'reportes':               'Acceder a Reportes',
             'reportes_ventas':        'Ver Historial de Ventas y Tickets',
             'reportes_generar':       'Generar Reportes',
+            'pedidos':                'Acceder a Pedidos a Proveedores',
+            'pedidos_gestionar':      'Crear, Editar y Recibir Pedidos',
+            'pedidos_reportes':       'Ver y Exportar Reportes de Compras',
             'configuracion':          'Acceder a Configuración',
             'configuracion_colores':  'Personalizar Colores'
         };
@@ -67,8 +73,9 @@ export class UsuariosManager {
             'dashboard':     ['dashboard'],
             'productos':     ['productos', 'productos_crear', 'productos_editar', 'productos_eliminar'],
             'ventas':        ['ventas'],
-            'proveedores':   ['proveedores', 'proveedores_crear', 'proveedores_editar', 'proveedores_eliminar'],
-            'reportes':      ['reportes', 'reportes_ventas', 'reportes_generar'],
+            'proveedores':   ['proveedores', 'proveedores_crear', 'proveedores_editar', 'proveedores_eliminar', 'pedidos', 'pedidos_gestionar', 'pedidos_reportes'],
+            'reportes':      ['reportes', 'reportes_ventas', 'reportes_generar', 'pedidos_reportes'],
+            'pedidos':       ['pedidos', 'pedidos_gestionar', 'pedidos_reportes'],
             'configuracion': ['configuracion', 'configuracion_colores']
         };
     }
@@ -171,7 +178,7 @@ export class UsuariosManager {
     perfilTieneAccesoTotal(usuario) {
         if (!usuario) return false;
         const efectivos = this._resolverPermisosEfectivos(usuario);
-        return efectivos.some(p => ['proveedores', 'reportes'].includes(p));
+        return efectivos.some(p => ['proveedores', 'reportes', 'pedidos'].includes(p));
     }
 
     // ─────────────────────────────────────────────────────────
@@ -428,6 +435,11 @@ export class UsuariosManager {
                 'proveedores_crear':    'Crear Proveedores',
                 'proveedores_editar':   'Editar Proveedores',
                 'proveedores_eliminar': 'Eliminar Proveedores'
+            },
+            'Pedidos': {
+                'pedidos':           'Acceder a Pedidos a Proveedores',
+                'pedidos_gestionar': 'Crear, Editar y Recibir Pedidos',
+                'pedidos_reportes':  'Ver y Exportar Reportes de Compras'
             },
             'Reportes': {
                 'reportes':         'Acceder a Reportes',

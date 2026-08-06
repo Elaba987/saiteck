@@ -30,10 +30,21 @@ export const TIPOS_OPERACION = {
     PROVEEDOR_VISITA_MARCADA:   { label: 'Marcó proveedor como visitado',  icono: '✅🚚', categoria: 'Proveedores' },
     PROVEEDOR_VISITA_PROGRAMADA:{ label: 'Programó visita de proveedor',   icono: '📅🚚', categoria: 'Proveedores' },
 
+    // ── Catálogo de productos por proveedor (solo referencia, sin precio propio) ──
+    PROVEEDOR_PRODUCTO_ASOCIAR:  { label: 'Vinculó producto a proveedor',   icono: '🔗➕', categoria: 'Proveedores' },
+    PROVEEDOR_PRODUCTO_QUITAR:   { label: 'Desvinculó producto de proveedor', icono: '🔗🗑️', categoria: 'Proveedores' },
+
+    // ── Lista Frecuente (plantilla persistente de pedido) ──
+    PROVEEDOR_LISTA_FRECUENTE_GUARDAR:  { label: 'Guardó lista frecuente de pedido',  icono: '⭐💾', categoria: 'Proveedores' },
+    PROVEEDOR_LISTA_FRECUENTE_ELIMINAR: { label: 'Eliminó lista frecuente de pedido', icono: '⭐🗑️', categoria: 'Proveedores' },
+
     // ── Pedidos ──
     PEDIDO_CREAR:               { label: 'Creó pedido',                    icono: '🛒➕', categoria: 'Pedidos' },
-    PEDIDO_COMPLETAR:           { label: 'Completó pedido',                icono: '🛒✅', categoria: 'Pedidos' },
+    PEDIDO_EDITAR:               { label: 'Editó pedido pendiente',        icono: '🛒✏️', categoria: 'Pedidos' },
+    PEDIDO_COMPLETAR:           { label: 'Recibió pedido',                 icono: '🛒✅', categoria: 'Pedidos' },
     PEDIDO_ELIMINAR:            { label: 'Eliminó pedido',                 icono: '🛒🗑️', categoria: 'Pedidos' },
+    PEDIDO_DESDE_CATALOGO:      { label: 'Creó pedido desde catálogo del proveedor', icono: '🛒🔗', categoria: 'Pedidos' },
+    PEDIDO_REPORTE_EXPORTADO:   { label: 'Exportó reporte de compras',     icono: '📊📥', categoria: 'Pedidos' },
 
     // ── Terminales Mercado Pago ──
     TERMINAL_CREAR:             { label: 'Registró terminal MP',           icono: '🖥️➕', categoria: 'Terminales' },

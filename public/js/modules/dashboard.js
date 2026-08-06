@@ -237,6 +237,8 @@ export class DashboardManager {
     }
 
     // ─── PRÓXIMAS VISITAS DE PROVEEDORES ─────────────────────────────────
+    // NUEVO: si el proveedor tiene una Lista Frecuente guardada, se muestra
+    // un botón de acceso directo para generar el pedido sin salir del Dashboard.
     renderizarProximasVisitas() {
         const contenedor = document.getElementById('proximasVisitas');
         if (!contenedor) return;
@@ -271,6 +273,7 @@ export class DashboardManager {
 
         const nombresDias  = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
         const nombresMeses = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+        const puedeGestionarPedidos = window.appInstance?.usuariosManager?.tienePermiso('pedidos_gestionar') || false;
 
         contenedor.innerHTML = proximos.map(p => {
             const esHoy    = p.diffDias === 0;
@@ -304,14 +307,24 @@ export class DashboardManager {
                 infoProgramacion = `<small style="color:#718096;">📅 Fecha manual</small>`;
             }
 
+            // ── NUEVO: acceso rápido a Lista Frecuente ──
+            const tieneListaFrecuente = (p.listaFrecuente || []).length > 0;
+            const botonFrecuente = (tieneListaFrecuente && puedeGestionarPedidos)
+                ? `<button class="btn btn-success" style="padding:5px 10px;font-size:11px;margin-top:6px;"
+                       onclick="window.appInstance.crearPedidoRapidoFrecuente('${p.id}')">
+                       ⭐ Pedido Frecuente
+                   </button>`
+                : '';
+
             return `
                 <div style="display:flex;align-items:center;justify-content:space-between;
                             background:${colorBg};border:1px solid ${colorBorde};border-radius:8px;
-                            padding:12px 16px;margin-bottom:8px;">
+                            padding:12px 16px;margin-bottom:8px;flex-wrap:wrap;gap:8px;">
                     <div>
                         <strong>${p.nombre}</strong>
                         <br>${infoProgramacion}
                         ${p.telefono ? `<br><small style="color:#718096;">📞 ${p.telefono}</small>` : ''}
+                        ${botonFrecuente}
                     </div>
                     <div style="text-align:right;min-width:90px;">
                         <div style="font-weight:700;font-size:14px;color:${esHoy ? '#2b6cb0' : '#4a5568'};">

@@ -1,9 +1,15 @@
 // reportes.js - Módulo optimizado para generación de reportes
 
+import { filtrarPorPeriodo, tituloPeriodo } from './fechasUtil.js';
+
 export class ReportesManager {
-    constructor(ventasManager) {
-        this.ventasManager = ventasManager;
+    constructor(ventasManager, pedidosManager = null) {
+        this.ventasManager  = ventasManager;
+        this.pedidosManager = pedidosManager; // ── NUEVO: necesario para Salidas por compras ──
     }
+
+    /** NUEVO — permite inyectar pedidosManager después de construir (igual que los demás managers) */
+    setPedidosManager(mgr) { this.pedidosManager = mgr; }
 
     generarReporte(tipo, parametros = {}) {
         const generadores = {
@@ -187,5 +193,43 @@ export class ReportesManager {
             ? (a, b) => b.cantidadVendida - a.cantidadVendida
             : (a, b) => a.cantidadVendida - b.cantidadVendida;
         return productos.sort(comparador);
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // NUEVO — REPORTE DE ENTRADAS Y SALIDAS (flujo de caja)
+    //
+    // Entradas = todo el dinero que entró por ventas (efectivo + tarjeta).
+    // Salidas  = pagos a proveedores (pedidos completados) +
+    //            cambio entregado a clientes en ventas en efectivo.
+    //
+    // Usa los mismos tipos de periodo que el resto de reportes
+    // ('diario','semanal','mensual','anual','fecha','rango',
+    //  'mes-especifico','año-especifico') vía fechasUtil.js.
+    // ═══════════════════════════════════════════════════════════════
+
+    generarReporteFlujo(tipo, parametros = {}) {
+        const ventas  = filtrarPorPeriodo(this.ventasManager.obtenerTodas(), tipo, parametros, v => v.fecha);
+        const compras = this.pedidosManager
+            ? filtrarPorPeriodo(this.pedidosManager.obtenerCompletados(), tipo, parametros, p => p.fechaCompletado || p.fechaCreacion)
+            : [];
+
+        const entradas          = ventas.reduce((sum, v) => sum + v.total, 0);
+        const salidasProveedor  = compras.reduce((sum, p) => sum + p.total, 0);
+        const salidasCambio     = ventas.reduce((sum, v) =>
+            sum + (v.metodoPago === 'efectivo' ? (v.cambio || 0) : 0), 0);
+        const salidas = salidasProveedor + salidasCambio;
+
+        return {
+            titulo:  `Entradas y Salidas — ${tituloPeriodo(tipo, parametros)}`,
+            entradas,
+            salidasProveedor,
+            salidasCambio,
+            salidas,
+            neto: entradas - salidas,
+            cantidadVentas:  ventas.length,
+            cantidadCompras: compras.length,
+            ventas,
+            compras
+        };
     }
 }

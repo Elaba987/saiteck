@@ -7,6 +7,10 @@ export class ProveedoresManager {
         this.proveedores = [];
         this.unsubscribe = null;
         this._auditoria  = null;
+
+        // ── Historial de visitas (colección independiente 'visitasProveedor') ──
+        this.visitas            = [];
+        this.unsubscribeVisitas = null;
     }
 
     setAuditoriaManager(mgr) { this._auditoria = mgr; }
@@ -54,7 +58,9 @@ export class ProveedoresManager {
             visitaRealizada:   false,
             tipoReparto:       proveedor.tipoReparto       || 'manual',
             diasReparto:       proveedor.diasReparto       || [],
-            frecuenciaReparto: proveedor.frecuenciaReparto || 1
+            frecuenciaReparto: proveedor.frecuenciaReparto || 1,
+            productosAsociados: [],   // catálogo: [{ productoClave }] — el precio SIEMPRE se lee de Productos
+            listaFrecuente:     []    // plantilla persistente: [{ productoClave, cantidad }]
         };
 
         const resultado = await StorageManager.add(STORAGE_KEYS.PROVEEDORES, nuevoProveedor);
@@ -165,6 +171,9 @@ export class ProveedoresManager {
         });
 
         if (resultado.success) {
+            // ── Registrar en el historial permanente de visitas ──
+            await this._registrarVisitaEnHistorial(proveedor, proveedor.fechaVisita);
+
             this._auditoria?.registrar('PROVEEDOR_VISITA_MARCADA', {
                 nombre:       proveedor.nombre,
                 fechaVisita:  proveedor.fechaVisita || '-'
@@ -256,5 +265,155 @@ export class ProveedoresManager {
             case 'za':      return proveedoresOrdenados.sort((a, b) => b.nombre.localeCompare(a.nombre));
             default:        return proveedoresOrdenados;
         }
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // CATÁLOGO DE PRODUCTOS DEL PROVEEDOR
+    //
+    // IMPORTANTE: el catálogo solo guarda la CLAVE del producto.
+    // NO se guarda nombre ni precio propios — siempre se leen en vivo
+    // desde ProductosManager, así cualquier cambio hecho en la sección
+    // Productos (precio, nombre) se refleja automáticamente aquí y en
+    // los pedidos que se arman a partir del catálogo.
+    // ═══════════════════════════════════════════════════════════════
+
+    /** Devuelve las claves crudas guardadas (sin resolver contra Productos) */
+    obtenerProductosAsociados(proveedorId) {
+        const proveedor = this.obtenerPorId(proveedorId);
+        return proveedor?.productosAsociados || [];
+    }
+
+    async agregarProductoAsociado(proveedorId, productoClave) {
+        const proveedor = this.obtenerPorId(proveedorId);
+        if (!proveedor) return { success: false, message: 'Proveedor no encontrado' };
+
+        const claveNum = parseInt(productoClave);
+        const yaExiste = (proveedor.productosAsociados || []).some(p => p.productoClave === claveNum);
+        if (yaExiste) return { success: false, message: 'Este producto ya está vinculado a este proveedor' };
+
+        const productosAsociados = [...(proveedor.productosAsociados || []), { productoClave: claveNum }];
+        const resultado = await StorageManager.update(STORAGE_KEYS.PROVEEDORES, proveedorId, { productosAsociados });
+
+        if (resultado.success) {
+            this._auditoria?.registrar('PROVEEDOR_PRODUCTO_ASOCIAR', {
+                proveedor: proveedor.nombre,
+                clave:     claveNum
+            });
+            return { success: true, productosAsociados };
+        }
+        return { success: false, message: 'Error al vincular producto' };
+    }
+
+    async eliminarProductoAsociado(proveedorId, productoClave) {
+        const proveedor = this.obtenerPorId(proveedorId);
+        if (!proveedor) return { success: false, message: 'Proveedor no encontrado' };
+
+        const claveNum = parseInt(productoClave);
+        const productosAsociados = (proveedor.productosAsociados || [])
+            .filter(p => p.productoClave !== claveNum);
+        const resultado = await StorageManager.update(STORAGE_KEYS.PROVEEDORES, proveedorId, { productosAsociados });
+
+        if (resultado.success) {
+            this._auditoria?.registrar('PROVEEDOR_PRODUCTO_QUITAR', { proveedor: proveedor.nombre, clave: claveNum });
+            return { success: true, productosAsociados };
+        }
+        return { success: false, message: 'Error al desvincular producto' };
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // LISTA FRECUENTE (plantilla persistente de pedido)
+    //
+    // A diferencia de un pedido puntual, esta lista vive en el propio
+    // proveedor y NO se consume/borra al completar un pedido. Sirve
+    // como plantilla reutilizable: "cada vez que venga este proveedor,
+    // normalmente le pido esto". Debe estar disponible en Dashboard /
+    // Proveedores siempre que el proveedor tenga una fechaVisita asignada.
+    // ═══════════════════════════════════════════════════════════════
+
+    obtenerListaFrecuente(proveedorId) {
+        const proveedor = this.obtenerPorId(proveedorId);
+        return proveedor?.listaFrecuente || [];
+    }
+
+    tieneListaFrecuente(proveedorId) {
+        return this.obtenerListaFrecuente(proveedorId).length > 0;
+    }
+
+    /**
+     * Reemplaza la lista frecuente completa del proveedor.
+     * @param {string} proveedorId
+     * @param {Array}  items - [{ productoClave, cantidad }]
+     */
+    async guardarListaFrecuente(proveedorId, items = []) {
+        const proveedor = this.obtenerPorId(proveedorId);
+        if (!proveedor) return { success: false, message: 'Proveedor no encontrado' };
+
+        const listaFrecuente = items
+            .filter(i => parseInt(i.cantidad) > 0)
+            .map(i => ({ productoClave: parseInt(i.productoClave), cantidad: parseInt(i.cantidad) }));
+
+        if (listaFrecuente.length === 0) {
+            return { success: false, message: 'La lista debe tener al menos un producto con cantidad mayor a 0' };
+        }
+
+        const resultado = await StorageManager.update(STORAGE_KEYS.PROVEEDORES, proveedorId, { listaFrecuente });
+
+        if (resultado.success) {
+            this._auditoria?.registrar('PROVEEDOR_LISTA_FRECUENTE_GUARDAR', {
+                proveedor: proveedor.nombre,
+                productos: listaFrecuente.length
+            });
+            return { success: true, listaFrecuente };
+        }
+        return { success: false, message: 'Error al guardar la lista frecuente' };
+    }
+
+    async eliminarListaFrecuente(proveedorId) {
+        const proveedor = this.obtenerPorId(proveedorId);
+        if (!proveedor) return { success: false, message: 'Proveedor no encontrado' };
+
+        const resultado = await StorageManager.update(STORAGE_KEYS.PROVEEDORES, proveedorId, { listaFrecuente: [] });
+
+        if (resultado.success) {
+            this._auditoria?.registrar('PROVEEDOR_LISTA_FRECUENTE_ELIMINAR', { proveedor: proveedor.nombre });
+            return { success: true };
+        }
+        return { success: false, message: 'Error al eliminar la lista frecuente' };
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // HISTORIAL DE VISITAS
+    // ═══════════════════════════════════════════════════════════════
+
+    async cargarVisitas() {
+        this.visitas = await StorageManager.loadAll('visitasProveedor');
+        return this.visitas;
+    }
+
+    iniciarEscuchaVisitas(callback) {
+        this.unsubscribeVisitas = StorageManager.onSnapshot('visitasProveedor', (visitas) => {
+            this.visitas = visitas;
+            if (callback) callback(visitas);
+        });
+    }
+
+    detenerEscuchaVisitas() {
+        if (this.unsubscribeVisitas) this.unsubscribeVisitas();
+    }
+
+    obtenerHistorialVisitas(proveedorId) {
+        return this.visitas
+            .filter(v => v.proveedorId === proveedorId)
+            .sort((a, b) => new Date(b.fechaRealizada) - new Date(a.fechaRealizada));
+    }
+
+    async _registrarVisitaEnHistorial(proveedor, fechaProgramada) {
+        const registro = {
+            proveedorId:     proveedor.id,
+            proveedorNombre: proveedor.nombre,
+            fechaProgramada: fechaProgramada || null,
+            fechaRealizada:  new Date().toISOString()
+        };
+        await StorageManager.add('visitasProveedor', registro);
     }
 }

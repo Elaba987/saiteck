@@ -13,6 +13,48 @@
     <link rel="stylesheet" href="css/styles.css">
     <link rel="stylesheet" href="css/styles_additions.css">
     <link rel="stylesheet" href="css/styles_mp.css">
+    <style>
+        /* ── Pestañas del modal de Detalle de Proveedor ── */
+        .detalle-tabs {
+            display: flex;
+            gap: 8px;
+            border-bottom: 2px solid #e2e8f0;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+        .detalle-tab-btn {
+            background: none;
+            border: none;
+            padding: 10px 16px;
+            font-size: 14px;
+            font-weight: 600;
+            color: #718096;
+            cursor: pointer;
+            border-bottom: 3px solid transparent;
+            transition: all 0.2s;
+        }
+        .detalle-tab-btn:hover {
+            color: var(--color-primario);
+        }
+        .detalle-tab-btn.active {
+            color: var(--color-primario);
+            border-bottom-color: var(--color-primario);
+        }
+        .pedido-catalogo-card {
+            background: white;
+            border: 2px dashed #cbd5e0;
+            border-radius: 12px;
+            padding: 20px;
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        /* ── Sección de Pedidos embebida dentro de Proveedores ── */
+        .pedidos-embebida {
+            margin-top: 30px;
+            padding-top: 24px;
+            border-top: 3px solid #e2e8f0;
+        }
+    </style>
 </head>
 <body>
 
@@ -173,6 +215,9 @@
                                 <div class="form-group">
                                     <label>Precio de Compra (Proveedor)</label>
                                     <input type="number" step="0.01" id="precioCompra" required>
+                                    <small style="color:#718096;margin-top:4px;display:block;">
+                                        Este es el precio que usarán automáticamente el Catálogo de Proveedores y los Pedidos.
+                                    </small>
                                 </div>
                                 <div class="form-group" id="grupoPrecioVenta">
                                     <label id="labelPrecioVenta">Precio de Venta</label>
@@ -313,7 +358,7 @@
                 </div>
             </section>
 
-            <!-- ─── PROVEEDORES ─── -->
+            <!-- ─── PROVEEDORES (incluye Pedidos embebido, sin sección propia en el sidebar) ─── -->
             <section id="proveedores" class="section hidden">
 
                 <div class="collapsible-form-card">
@@ -380,6 +425,10 @@
 
                 <div class="card">
                     <h3>Lista de Proveedores</h3>
+                    <p style="color:#718096;font-size:13px;margin-bottom:10px;">
+                        💡 Usa <strong>"Ver Detalle"</strong> en cada proveedor para gestionar su catálogo de productos,
+                        su Lista Frecuente, su historial de visitas y su historial de compras.
+                    </p>
                     <div class="search-bar">
                         <input type="text" id="buscarProveedor" placeholder="Buscar proveedor...">
                     </div>
@@ -397,6 +446,22 @@
                             <tbody></tbody>
                         </table>
                     </div>
+
+                    <!-- ── PEDIDOS embebido (no es sección propia del sidebar) ── -->
+                    <div class="pedidos-embebida" id="seccionPedidosEmbebida">
+                        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:10px;">
+                            <h3 style="border:none;margin:0;padding:0;">🛒 Pedidos a Proveedores</h3>
+                            <button id="btnNuevoPedidoCatalogo" class="btn btn-primary">
+                                🔗 Nuevo Pedido desde Catálogo
+                            </button>
+                        </div>
+                        <p style="color:#718096;font-size:13px;margin-bottom:20px;">
+                            Arma pedidos usando el catálogo de productos de cada proveedor. Al recibir un pedido,
+                            el stock de cada producto marcado se actualiza automáticamente y queda en el historial
+                            de compras y en Reportes.
+                        </p>
+                        <div id="listaPedidosPendientes"></div>
+                    </div>
                 </div>
             </section>
 
@@ -404,20 +469,36 @@
             <section id="reportes" class="section hidden">
                 <div class="card">
                     <h3>Reportes y Analíticas</h3>
+
                     <div class="form-row">
+                        <div class="form-group">
+                            <label>Tipo de Datos</label>
+                            <select id="tipoDatoReporte">
+                                <option value="ventas">💰 Ventas</option>
+                                <option value="compras">🛒 Compras a Proveedores</option>
+                                <option value="flujo">🔄 Entradas y Salidas</option>
+                            </select>
+                        </div>
                         <div class="form-group">
                             <label>Tipo de Reporte</label>
                             <select id="tipoReporte">
-                                <option value="diario">Ventas del Día</option>
-                                <option value="semanal">Ventas de la Semana</option>
-                                <option value="mensual">Ventas del Mes</option>
-                                <option value="anual">Ventas del Año</option>
+                                <option value="diario">Del Día</option>
+                                <option value="semanal">De la Semana</option>
+                                <option value="mensual">Del Mes</option>
+                                <option value="anual">Del Año</option>
                                 <option value="fecha">Día Específico</option>
                                 <option value="rango">Rango de Fechas</option>
                                 <option value="mes-especifico">Mes Específico</option>
                                 <option value="año-especifico">Año Específico</option>
                             </select>
                         </div>
+                    </div>
+
+                    <div id="opcionProveedorReporte" class="form-group hidden" style="max-width:320px;">
+                        <label>Proveedor</label>
+                        <select id="proveedorReporteSelect">
+                            <option value="">Todos los proveedores</option>
+                        </select>
                     </div>
 
                     <div id="opcionesFecha" class="hidden" style="margin-top:15px;">
@@ -547,7 +628,6 @@
                                 </p>
                             </div>
                         </div>
-                        <!-- El JS inyecta aquí el listado + botones -->
                         <div id="seccionTerminalesContenido">
                             <p style="color:#718096;font-size:14px;">Cargando terminales...</p>
                         </div>
@@ -666,6 +746,9 @@
                     <div class="form-group">
                         <label>Precio de Compra</label>
                         <input type="number" step="0.01" id="editPrecioCompra" required>
+                        <small style="color:#718096;margin-top:4px;display:block;">
+                            Se usa automáticamente en Catálogo de Proveedores y Pedidos.
+                        </small>
                     </div>
                     <div class="form-group">
                         <label id="labelEditPrecioVenta">Precio de Venta</label>
@@ -753,6 +836,117 @@
                 <button id="btnConfirmarSiguienteVisita" class="btn btn-primary">Sí, Programar</button>
                 <button id="btnCancelarSiguienteVisita" class="btn btn-secondary">No</button>
             </div>
+        </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════
+         MODAL — DETALLE DE PROVEEDOR
+         Catálogo / Lista Frecuente / Historial Visitas / Historial Compras
+    ═══════════════════════════════════════════════════════ -->
+    <div id="modalDetalleProveedor" class="modal-overlay hidden" style="display:none;">
+        <div class="modal-content" style="max-width:800px;">
+            <div class="modal-header">
+                <h3 id="detalleProveedorNombre">Proveedor</h3>
+                <button class="modal-close" id="cerrarModalDetalleProveedor">×</button>
+            </div>
+
+            <p style="color:#718096;font-size:14px;margin-bottom:4px;">
+                📞 <span id="detalleProveedorTelefono">-</span> &nbsp;|&nbsp;
+                ✉️ <span id="detalleProveedorEmail">-</span>
+            </p>
+
+            <div style="margin:16px 0;">
+                <button id="btnCrearPedidoDesdeDetalle" class="btn btn-success">
+                    🛒 Crear Pedido desde Catálogo
+                </button>
+            </div>
+
+            <div class="detalle-tabs" id="detalleProveedorTabs">
+                <button type="button" class="detalle-tab-btn active" data-tab="catalogo">📋 Catálogo</button>
+                <button type="button" class="detalle-tab-btn" data-tab="frecuente">⭐ Lista Frecuente</button>
+                <button type="button" class="detalle-tab-btn" data-tab="visitas">🚚 Historial de Visitas</button>
+                <button type="button" class="detalle-tab-btn" data-tab="compras">🧾 Historial de Compras</button>
+            </div>
+
+            <!-- Panel: Catálogo — SOLO selección de producto, el precio siempre es el de Productos -->
+            <div id="panelDetalle_catalogo">
+                <form id="formCatalogoProducto" style="background:#f7fafc;padding:16px;border-radius:10px;margin-bottom:15px;">
+                    <div class="form-group" style="margin-bottom:10px;">
+                        <label style="font-size:13px;">Producto</label>
+                        <select id="catalogoProductoSelect" required>
+                            <option value="">-- Seleccione un producto --</option>
+                        </select>
+                    </div>
+                    <button type="submit" class="btn btn-primary" style="padding:10px 20px;font-size:14px;">
+                        ➕ Agregar al Catálogo
+                    </button>
+                </form>
+                <div id="tablaCatalogoProveedor"></div>
+            </div>
+
+            <!-- Panel: Lista Frecuente -->
+            <div id="panelDetalle_frecuente" class="hidden"></div>
+
+            <!-- Panel: Historial de visitas -->
+            <div id="panelDetalle_visitas" class="hidden"></div>
+
+            <!-- Panel: Historial de compras -->
+            <div id="panelDetalle_compras" class="hidden"></div>
+        </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════
+         MODAL — NUEVO PEDIDO / EDITAR PEDIDO / LISTA FRECUENTE
+         (multipropósito, controlado por app.js vía _modoPedidoModal)
+    ═══════════════════════════════════════════════════════ -->
+    <div id="modalPedidoCatalogo" class="modal-overlay hidden" style="display:none;">
+        <div class="modal-content" style="max-width:600px;">
+            <div class="modal-header">
+                <h3>🛒 Nuevo Pedido desde Catálogo</h3>
+                <button class="modal-close" id="cerrarModalPedidoCatalogo">×</button>
+            </div>
+
+            <div class="form-group">
+                <label>Proveedor</label>
+                <select id="pedidoCatalogoProveedor">
+                    <option value="">-- Selecciona un proveedor --</option>
+                </select>
+            </div>
+
+            <p style="color:#718096;font-size:13px;margin-bottom:10px;">
+                Indica la cantidad de cada producto. Los productos con cantidad 0 no se incluirán.
+            </p>
+
+            <div id="pedidoCatalogoContenedor" class="pedido-catalogo-card">
+                Selecciona un proveedor para ver su catálogo.
+            </div>
+
+            <button id="btnCrearPedidoCatalogo" class="btn btn-success btn-block">
+                ✅ Crear Pedido
+            </button>
+        </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════
+         MODAL — RECEPCIÓN DE PEDIDO (checklist)
+    ═══════════════════════════════════════════════════════ -->
+    <div id="modalRecepcionPedido" class="modal-overlay hidden" style="display:none;">
+        <div class="modal-content" style="max-width:600px;">
+            <div class="modal-header">
+                <h3>✅ Recibir Pedido — <span id="recepcionPedidoProveedor"></span></h3>
+                <button class="modal-close" id="cerrarModalRecepcionPedido">×</button>
+            </div>
+
+            <p style="color:#718096;font-size:13px;margin-bottom:14px;">
+                Revisa qué productos llegaron. Puedes ajustar la cantidad recibida y el precio de compra real
+                de cada uno — el stock solo se actualiza para los productos marcados como recibidos.
+            </p>
+
+            <div id="recepcionPedidoContenedor"></div>
+
+            <button id="btnConfirmarRecepcionPedido" class="btn btn-success btn-block" style="margin-top:10px;">
+                ✅ Confirmar Recepción
+            </button>
         </div>
     </div>
 
@@ -874,7 +1068,6 @@
     <div id="modalCobrarTarjeta" class="mp-modal-overlay hidden" style="display:none;">
         <div class="mp-modal-card">
 
-            <!-- Encabezado fijo -->
             <div class="mp-modal-header">
                 <div class="mp-modal-header-logo">💳</div>
                 <div class="mp-modal-header-title">
@@ -884,7 +1077,6 @@
                 <button class="mp-modal-close" id="btnCerrarModalTarjeta" title="Cerrar">✕</button>
             </div>
 
-            <!-- Contenido dinámico inyectado por JS -->
             <div id="cobrarTarjetaContenido">
                 <!-- abrirModalCobrarTarjeta() inyecta aquí el paso 1 y paso 2 -->
             </div>
@@ -988,7 +1180,6 @@
     <script>
         document.addEventListener('DOMContentLoaded', () => {
 
-            // Cerrar modal cobrar tarjeta
             document.getElementById('btnCerrarModalTarjeta')?.addEventListener('click', () => {
                 if (window.appInstance) {
                     window.appInstance._cancelarCobroTarjeta?.();
@@ -998,7 +1189,6 @@
                 }
             });
 
-            // Cerrar modal terminal
             const cerrarTerminal = () => {
                 if (window.appInstance) {
                     window.appInstance.cerrarModal?.('modalTerminal');
@@ -1010,7 +1200,6 @@
             document.getElementById('btnCerrarModalTerminal')?.addEventListener('click', cerrarTerminal);
             document.getElementById('btnCancelarTerminal')?.addEventListener('click', cerrarTerminal);
 
-            // Cerrar al hacer clic fuera de las tarjetas
             document.getElementById('modalCobrarTarjeta')?.addEventListener('click', (e) => {
                 if (e.target === document.getElementById('modalCobrarTarjeta')) {
                     window.appInstance?._cancelarCobroTarjeta?.();

@@ -221,6 +221,38 @@ export class ProductosManager {
         return { success: false, message: 'Error al actualizar stock' };
     }
 
+    /**
+     * NUEVO — Aumenta el stock de un producto (usado al recibir un pedido
+     * de proveedor). Complemento de reducirStock().
+     *
+     * @param {number|string} clave    - clave del producto
+     * @param {number}        cantidad - cantidad a sumar (unidades o gramos si es granel;
+     *                                   pedidos.js siempre trabaja con unidades/kg enteros,
+     *                                   no con gramos, así que aquí se suma tal cual)
+     */
+    async aumentarStock(clave, cantidad) {
+        const producto = this.obtenerPorClave(clave);
+        if (!producto) {
+            return { success: false, message: 'Producto no encontrado' };
+        }
+
+        const incremento = parseFloat(cantidad) || 0;
+        if (incremento <= 0) {
+            return { success: false, message: 'Cantidad inválida' };
+        }
+
+        const nuevoStock = parseFloat((producto.stock + incremento).toFixed(3));
+        const resultado  = await StorageManager.update(STORAGE_KEYS.PRODUCTOS, producto.id, {
+            stock: nuevoStock
+        });
+
+        if (resultado.success) {
+            return { success: true, producto: { ...producto, stock: nuevoStock } };
+        }
+
+        return { success: false, message: 'Error al actualizar stock' };
+    }
+
     generarArchivoAlmacen() {
         const totalCompra = this.productos.reduce((sum, p) => sum + (p.precioCompra * p.stock), 0);
         const totalVenta  = this.productos.reduce((sum, p) => sum + (p.precioVenta  * p.stock), 0);
