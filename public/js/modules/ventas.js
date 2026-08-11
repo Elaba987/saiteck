@@ -154,7 +154,16 @@ export class VentasManager {
     /**
      * @param {object} [opcionesPago]
      *   metodoPago: 'efectivo' | 'tarjeta'
+     *   pago:   monto entregado por el cliente (solo efectivo; para tarjeta se asume = total)
+     *   cambio: cambio entregado (solo efectivo; para tarjeta es 0)
      *   infoTarjeta: { terminalNombre, intentId, monto }  (solo si tarjeta)
+     *
+     * NOTA IMPORTANTE: `pago` y `cambio` se guardan DENTRO del documento de
+     * venta en Firestore. Antes solo se asignaban al objeto en memoria
+     * después de llamar a esta función (en app.js), por lo que nunca
+     * quedaban persistidos — y el reporte de Entradas/Salidas no podía
+     * calcular el cambio entregado porque el campo simplemente no existía
+     * en los datos cargados desde Firestore.
      */
     async finalizarVenta(opcionesPago = {}) {
         if (this.ventaActual.length === 0) {
@@ -168,9 +177,12 @@ export class VentasManager {
             ? { id: usuarioActual.id, nombre: usuarioActual.nombre, rol: usuarioActual.rol }
             : { id: 'system', nombre: 'Sistema', rol: 'sistema' };
 
-        // Método de pago
         const metodoPago  = opcionesPago.metodoPago  || 'efectivo';
         const infoTarjeta = opcionesPago.infoTarjeta  || null;
+
+        // Para tarjeta no hay cambio de por medio: pago = total, cambio = 0.
+        const pago   = opcionesPago.pago   !== undefined ? parseFloat(opcionesPago.pago)   : total;
+        const cambio = opcionesPago.cambio !== undefined ? parseFloat(opcionesPago.cambio) : 0;
 
         const venta = {
             items:      [...this.ventaActual],
@@ -178,6 +190,8 @@ export class VentasManager {
             fecha:      new Date().toISOString(),
             usuario,
             metodoPago,
+            pago,       // ← NUEVO: ahora sí se persiste
+            cambio,     // ← NUEVO: ahora sí se persiste
             ...(infoTarjeta && { infoTarjeta })
         };
 

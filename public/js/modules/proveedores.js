@@ -59,8 +59,8 @@ export class ProveedoresManager {
             tipoReparto:       proveedor.tipoReparto       || 'manual',
             diasReparto:       proveedor.diasReparto       || [],
             frecuenciaReparto: proveedor.frecuenciaReparto || 1,
-            productosAsociados: [],   // catálogo: [{ productoClave }] — el precio SIEMPRE se lee de Productos
-            listaFrecuente:     []    // plantilla persistente: [{ productoClave, cantidad }]
+            productosAsociados: [],  // catálogo: [{ productoClave }] — el precio SIEMPRE se lee de Productos
+            listasFrecuentes:   []   // [{ id, nombre, items: [{ productoClave, cantidad }] }]
         };
 
         const resultado = await StorageManager.add(STORAGE_KEYS.PROVEEDORES, nuevoProveedor);
@@ -171,7 +171,6 @@ export class ProveedoresManager {
         });
 
         if (resultado.success) {
-            // ── Registrar en el historial permanente de visitas ──
             await this._registrarVisitaEnHistorial(proveedor, proveedor.fechaVisita);
 
             this._auditoria?.registrar('PROVEEDOR_VISITA_MARCADA', {
@@ -269,15 +268,11 @@ export class ProveedoresManager {
 
     // ═══════════════════════════════════════════════════════════════
     // CATÁLOGO DE PRODUCTOS DEL PROVEEDOR
-    //
-    // IMPORTANTE: el catálogo solo guarda la CLAVE del producto.
-    // NO se guarda nombre ni precio propios — siempre se leen en vivo
-    // desde ProductosManager, así cualquier cambio hecho en la sección
-    // Productos (precio, nombre) se refleja automáticamente aquí y en
-    // los pedidos que se arman a partir del catálogo.
+    // Solo guarda la CLAVE del producto — nombre y precio siempre se leen
+    // en vivo desde ProductosManager (así un cambio en Productos se
+    // refleja automáticamente aquí y en pedidos armados desde el catálogo).
     // ═══════════════════════════════════════════════════════════════
 
-    /** Devuelve las claves crudas guardadas (sin resolver contra Productos) */
     obtenerProductosAsociados(proveedorId) {
         const proveedor = this.obtenerPorId(proveedorId);
         return proveedor?.productosAsociados || [];
@@ -295,10 +290,7 @@ export class ProveedoresManager {
         const resultado = await StorageManager.update(STORAGE_KEYS.PROVEEDORES, proveedorId, { productosAsociados });
 
         if (resultado.success) {
-            this._auditoria?.registrar('PROVEEDOR_PRODUCTO_ASOCIAR', {
-                proveedor: proveedor.nombre,
-                clave:     claveNum
-            });
+            this._auditoria?.registrar('PROVEEDOR_PRODUCTO_ASOCIAR', { proveedor: proveedor.nombre, clave: claveNum });
             return { success: true, productosAsociados };
         }
         return { success: false, message: 'Error al vincular producto' };
@@ -309,8 +301,7 @@ export class ProveedoresManager {
         if (!proveedor) return { success: false, message: 'Proveedor no encontrado' };
 
         const claveNum = parseInt(productoClave);
-        const productosAsociados = (proveedor.productosAsociados || [])
-            .filter(p => p.productoClave !== claveNum);
+        const productosAsociados = (proveedor.productosAsociados || []).filter(p => p.productoClave !== claveNum);
         const resultado = await StorageManager.update(STORAGE_KEYS.PROVEEDORES, proveedorId, { productosAsociados });
 
         if (resultado.success) {
@@ -321,62 +312,105 @@ export class ProveedoresManager {
     }
 
     // ═══════════════════════════════════════════════════════════════
-    // LISTA FRECUENTE (plantilla persistente de pedido)
+    // LISTAS FRECUENTES (0 a muchas plantillas persistentes por proveedor)
     //
-    // A diferencia de un pedido puntual, esta lista vive en el propio
-    // proveedor y NO se consume/borra al completar un pedido. Sirve
-    // como plantilla reutilizable: "cada vez que venga este proveedor,
-    // normalmente le pido esto". Debe estar disponible en Dashboard /
-    // Proveedores siempre que el proveedor tenga una fechaVisita asignada.
+    // Cada proveedor puede tener varias listas nombradas (ej: "Pedido
+    // semanal", "Insumos de limpieza", "Solo bebidas"). Ninguna se borra
+    // al completar un pedido — son plantillas reutilizables. Deben estar
+    // disponibles como acceso rápido siempre que el proveedor tenga una
+    // fechaVisita asignada.
     // ═══════════════════════════════════════════════════════════════
 
-    obtenerListaFrecuente(proveedorId) {
+    obtenerListasFrecuentes(proveedorId) {
         const proveedor = this.obtenerPorId(proveedorId);
-        return proveedor?.listaFrecuente || [];
+        return proveedor?.listasFrecuentes || [];
     }
 
-    tieneListaFrecuente(proveedorId) {
-        return this.obtenerListaFrecuente(proveedorId).length > 0;
+    obtenerListaFrecuentePorId(proveedorId, listaId) {
+        return this.obtenerListasFrecuentes(proveedorId).find(l => l.id === listaId);
     }
 
-    /**
-     * Reemplaza la lista frecuente completa del proveedor.
-     * @param {string} proveedorId
-     * @param {Array}  items - [{ productoClave, cantidad }]
-     */
-    async guardarListaFrecuente(proveedorId, items = []) {
+    tieneListasFrecuentes(proveedorId) {
+        return this.obtenerListasFrecuentes(proveedorId).length > 0;
+    }
+
+    _sanearItemsLista(items = []) {
+        return items
+            .filter(i => parseInt(i.cantidad) > 0)
+            .map(i => ({ productoClave: parseInt(i.productoClave), cantidad: parseInt(i.cantidad) }));
+    }
+
+    /** Crea una NUEVA lista frecuente (no reemplaza las existentes) */
+    async crearListaFrecuente(proveedorId, nombre, items = []) {
         const proveedor = this.obtenerPorId(proveedorId);
         if (!proveedor) return { success: false, message: 'Proveedor no encontrado' };
 
-        const listaFrecuente = items
-            .filter(i => parseInt(i.cantidad) > 0)
-            .map(i => ({ productoClave: parseInt(i.productoClave), cantidad: parseInt(i.cantidad) }));
+        const nombreLimpio = (nombre || '').trim();
+        if (!nombreLimpio) return { success: false, message: 'La lista necesita un nombre' };
 
-        if (listaFrecuente.length === 0) {
-            return { success: false, message: 'La lista debe tener al menos un producto con cantidad mayor a 0' };
-        }
+        const itemsLimpios = this._sanearItemsLista(items);
+        if (itemsLimpios.length === 0) return { success: false, message: 'La lista debe tener al menos un producto con cantidad mayor a 0' };
 
-        const resultado = await StorageManager.update(STORAGE_KEYS.PROVEEDORES, proveedorId, { listaFrecuente });
+        const nuevaLista = {
+            id:     `lf_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+            nombre: nombreLimpio,
+            items:  itemsLimpios
+        };
+
+        const listasFrecuentes = [...(proveedor.listasFrecuentes || []), nuevaLista];
+        const resultado = await StorageManager.update(STORAGE_KEYS.PROVEEDORES, proveedorId, { listasFrecuentes });
 
         if (resultado.success) {
             this._auditoria?.registrar('PROVEEDOR_LISTA_FRECUENTE_GUARDAR', {
-                proveedor: proveedor.nombre,
-                productos: listaFrecuente.length
+                proveedor: proveedor.nombre, lista: nombreLimpio, productos: itemsLimpios.length
             });
-            return { success: true, listaFrecuente };
+            return { success: true, listasFrecuentes, lista: nuevaLista };
         }
-        return { success: false, message: 'Error al guardar la lista frecuente' };
+        return { success: false, message: 'Error al crear la lista frecuente' };
     }
 
-    async eliminarListaFrecuente(proveedorId) {
+    /** Edita una lista frecuente existente (nombre y/o items) */
+    async actualizarListaFrecuente(proveedorId, listaId, { nombre, items }) {
         const proveedor = this.obtenerPorId(proveedorId);
         if (!proveedor) return { success: false, message: 'Proveedor no encontrado' };
 
-        const resultado = await StorageManager.update(STORAGE_KEYS.PROVEEDORES, proveedorId, { listaFrecuente: [] });
+        const existe = (proveedor.listasFrecuentes || []).some(l => l.id === listaId);
+        if (!existe) return { success: false, message: 'Lista frecuente no encontrada' };
+
+        const nombreLimpio = (nombre || '').trim();
+        if (!nombreLimpio) return { success: false, message: 'La lista necesita un nombre' };
+
+        const itemsLimpios = this._sanearItemsLista(items || []);
+        if (itemsLimpios.length === 0) return { success: false, message: 'La lista debe tener al menos un producto con cantidad mayor a 0' };
+
+        const listasFrecuentes = (proveedor.listasFrecuentes || []).map(l =>
+            l.id === listaId ? { ...l, nombre: nombreLimpio, items: itemsLimpios } : l
+        );
+
+        const resultado = await StorageManager.update(STORAGE_KEYS.PROVEEDORES, proveedorId, { listasFrecuentes });
 
         if (resultado.success) {
-            this._auditoria?.registrar('PROVEEDOR_LISTA_FRECUENTE_ELIMINAR', { proveedor: proveedor.nombre });
-            return { success: true };
+            this._auditoria?.registrar('PROVEEDOR_LISTA_FRECUENTE_GUARDAR', {
+                proveedor: proveedor.nombre, lista: nombreLimpio, productos: itemsLimpios.length
+            });
+            return { success: true, listasFrecuentes };
+        }
+        return { success: false, message: 'Error al actualizar la lista frecuente' };
+    }
+
+    async eliminarListaFrecuente(proveedorId, listaId) {
+        const proveedor = this.obtenerPorId(proveedorId);
+        if (!proveedor) return { success: false, message: 'Proveedor no encontrado' };
+
+        const lista = (proveedor.listasFrecuentes || []).find(l => l.id === listaId);
+        const listasFrecuentes = (proveedor.listasFrecuentes || []).filter(l => l.id !== listaId);
+        const resultado = await StorageManager.update(STORAGE_KEYS.PROVEEDORES, proveedorId, { listasFrecuentes });
+
+        if (resultado.success) {
+            this._auditoria?.registrar('PROVEEDOR_LISTA_FRECUENTE_ELIMINAR', {
+                proveedor: proveedor.nombre, lista: lista?.nombre || listaId
+            });
+            return { success: true, listasFrecuentes };
         }
         return { success: false, message: 'Error al eliminar la lista frecuente' };
     }

@@ -5,10 +5,9 @@ import { filtrarPorPeriodo, tituloPeriodo } from './fechasUtil.js';
 export class ReportesManager {
     constructor(ventasManager, pedidosManager = null) {
         this.ventasManager  = ventasManager;
-        this.pedidosManager = pedidosManager; // ── NUEVO: necesario para Salidas por compras ──
+        this.pedidosManager = pedidosManager;
     }
 
-    /** NUEVO — permite inyectar pedidosManager después de construir (igual que los demás managers) */
     setPedidosManager(mgr) { this.pedidosManager = mgr; }
 
     generarReporte(tipo, parametros = {}) {
@@ -196,15 +195,38 @@ export class ReportesManager {
     }
 
     // ═══════════════════════════════════════════════════════════════
-    // NUEVO — REPORTE DE ENTRADAS Y SALIDAS (flujo de caja)
+    // REPORTE DE ENTRADAS Y SALIDAS (flujo de caja)
     //
-    // Entradas = todo el dinero que entró por ventas (efectivo + tarjeta).
-    // Salidas  = pagos a proveedores (pedidos completados) +
-    //            cambio entregado a clientes en ventas en efectivo.
+    // ── LÓGICA DE MOVIMIENTOS DE DINERO ──────────────────────────────
+    // Entradas: dinero físico/electrónico que efectivamente entra a caja.
+    //   - Venta en efectivo → entra lo que el CLIENTE PAGA EN MANO (`pago`),
+    //     no el total de la venta (eso vendría después, neto de cambio).
+    //   - Venta con tarjeta  → entra el total cobrado (no hay cambio).
     //
-    // Usa los mismos tipos de periodo que el resto de reportes
-    // ('diario','semanal','mensual','anual','fecha','rango',
-    //  'mes-especifico','año-especifico') vía fechasUtil.js.
+    // Salidas: dinero que sale de caja.
+    //   - Cambio entregado en ventas de efectivo (`cambio`).
+    //   - Pagos a proveedores: total de los PEDIDOS COMPLETADOS en el
+    //     periodo (usa el precio real pagado en cada recepción, que vive
+    //     únicamente en el pedido — ver pedidos.js).
+    //
+    // Con esto, matemáticamente: Entradas − Salidas = Σ(total de ventas)
+    // − Σ(pagos a proveedores). El bug anterior restaba el cambio de un
+    // total que YA estaba neto de cambio (`venta.total`), descontándolo
+    // dos veces y dando un Neto artificialmente bajo.
+    //
+    // ── GANANCIA NETA vs FLUJO NETO — NO SON LO MISMO ────────────────
+    // Ganancia Neta (margen contable) = Ingresos por ventas − Costo de
+    // la mercancía VENDIDA (precio de compra congelado al momento de
+    // cada venta). Es una medida de rentabilidad, sin importar cuándo se
+    // pagó esa mercancía al proveedor.
+    //
+    // Flujo Neto (caja) = Entradas − Salidas de efectivo/tarjeta de ESTE
+    // periodo, incluyendo pagos a proveedores que pueden corresponder a
+    // mercancía comprada para vender en OTRO periodo (o que ni se ha
+    // vendido todavía).
+    //
+    // Por diseño pueden diferir: se muestran juntas, con la nota arriba,
+    // en vez de forzarlas a coincidir.
     // ═══════════════════════════════════════════════════════════════
 
     generarReporteFlujo(tipo, parametros = {}) {
@@ -213,11 +235,22 @@ export class ReportesManager {
             ? filtrarPorPeriodo(this.pedidosManager.obtenerCompletados(), tipo, parametros, p => p.fechaCompletado || p.fechaCreacion)
             : [];
 
-        const entradas          = ventas.reduce((sum, v) => sum + v.total, 0);
-        const salidasProveedor  = compras.reduce((sum, p) => sum + p.total, 0);
-        const salidasCambio     = ventas.reduce((sum, v) =>
+        // Entradas: pago en mano (efectivo) o total (tarjeta).
+        // Con datos antiguos sin `pago` guardado, se usa total como respaldo.
+        const entradas = ventas.reduce((sum, v) => {
+            if (v.metodoPago === 'efectivo') return sum + (v.pago ?? v.total);
+            return sum + v.total;
+        }, 0);
+
+        const salidasCambio    = ventas.reduce((sum, v) =>
             sum + (v.metodoPago === 'efectivo' ? (v.cambio || 0) : 0), 0);
-        const salidas = salidasProveedor + salidasCambio;
+        const salidasProveedor = compras.reduce((sum, p) => sum + p.total, 0);
+        const salidas = salidasCambio + salidasProveedor;
+
+        // Para contexto: ganancia neta (margen contable) del mismo periodo.
+        const totalVentas  = this.calcularTotal(ventas);
+        const costoVentas   = this.calcularCostos(ventas);
+        const gananciaNeta  = totalVentas - costoVentas;
 
         return {
             titulo:  `Entradas y Salidas — ${tituloPeriodo(tipo, parametros)}`,
@@ -226,6 +259,8 @@ export class ReportesManager {
             salidasCambio,
             salidas,
             neto: entradas - salidas,
+            totalVentas,
+            gananciaNeta,
             cantidadVentas:  ventas.length,
             cantidadCompras: compras.length,
             ventas,

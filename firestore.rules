@@ -3,9 +3,20 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Permitir acceso solo a usuarios autenticados
-    match /{document=**} {
-      allow read, write: if request.auth != null;
+    // Cada usuario solo puede leer/escribir dentro de SU PROPIO árbol de datos:
+    // users/{uid}/productos, /proveedores, /pedidos, /visitasProveedor,
+    // /perfiles, /configuracion, /auditoria, /terminales, etc.
+    //
+    // Antes, la regla comodín (match /{document=**}) permitía a cualquier
+    // usuario autenticado leer y escribir los datos de CUALQUIER otro
+    // usuario. Con Pedidos ahora modificando stock y precios de compra
+    // directamente, se restringe el acceso a su dueño real.
+    match /users/{uid} {
+      allow read, write: if request.auth != null && request.auth.uid == uid;
+
+      match /{document=**} {
+        allow read, write: if request.auth != null && request.auth.uid == uid;
+      }
     }
   }
 }

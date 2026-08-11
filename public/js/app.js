@@ -15,7 +15,6 @@ import { TerminalesManager }   from './modules/terminales.js';
 import { MercadoPagoManager }  from './modules/mercadopago.js';
 import { PedidosManager }      from './modules/pedidos.js';
 
-// Detectar si estamos en modo prueba (Access Token empieza con APP_USR o TEST)
 const MP_IS_TEST_MODE = true; // Cambiar a false en producción
 
 class TiendaApp {
@@ -42,19 +41,19 @@ class TiendaApp {
         this.productoSeleccionado = null;
         this.datosInicializados   = false;
 
-        // Estado del flujo de cobro con tarjeta
         this._pagoTarjetaActivo    = false;
-        this._terminalSeleccionada = null;  // { id (Firestore), terminalId (MP), nombre }
+        this._terminalSeleccionada = null;
 
-        // ── Estado del detalle de proveedor (catálogo / lista frecuente / historiales) ──
+        // ── Detalle de proveedor (catálogo / listas frecuentes / historiales) ──
         this._proveedorDetalleActual = null;
 
-        // ── Estado del modal multipropósito de pedido/catálogo ──
+        // ── Modal multipropósito de pedido/catálogo/lista frecuente ──
         // modo: 'nuevo' | 'editar' | 'frecuente'
-        this._modoPedidoModal   = 'nuevo';
-        this._pedidoEditandoId  = null;
+        this._modoPedidoModal          = 'nuevo';
+        this._pedidoEditandoId         = null;
+        this._listaFrecuenteEditandoId = null; // null en 'frecuente' = crear lista nueva
 
-        // ── Estado del modal de recepción (checklist) ──
+        // ── Recepción de pedido (checklist) ──
         this._pedidoRecepcionId = null;
 
         this.init();
@@ -145,7 +144,7 @@ class TiendaApp {
             this.proveedoresManager.setAuditoriaManager(this.auditoriaManager);
             this.terminalesManager.setAuditoriaManager(this.auditoriaManager);
             this.pedidosManager.setAuditoriaManager(this.auditoriaManager);
-            this.pedidosManager.setProductosManager(this.productosManager); // ← clave: stock real al recibir
+            this.pedidosManager.setProductosManager(this.productosManager);
 
             this.adminPanelManager = new AdminPanelManager(
                 this.auditoriaManager,
@@ -172,11 +171,9 @@ class TiendaApp {
                 this.actualizarVistaProductos();
                 this.actualizarSelectVentas();
                 this.actualizarDashboard();
-                // Los precios/nombres del catálogo y la lista frecuente se leen en vivo:
-                // si el modal de detalle está abierto, refrescamos sus pestañas.
                 if (this._proveedorDetalleActual) {
                     this._refrescarCatalogoDetalle();
-                    this._refrescarListaFrecuenteDetalle();
+                    this._refrescarListasFrecuentesDetalle();
                 }
             });
             this.proveedoresManager.iniciarEscucha(() => {
@@ -185,6 +182,7 @@ class TiendaApp {
             });
             this.ventasManager.iniciarEscucha(() => {
                 this.actualizarDashboard();
+                this._refrescarReporteSiVisible();
             });
             this.terminalesManager.iniciarEscucha(() => {
                 this._actualizarVistaTerminales();
@@ -192,6 +190,7 @@ class TiendaApp {
             this.pedidosManager.iniciarEscucha(() => {
                 this.actualizarVistaPedidos();
                 if (this._proveedorDetalleActual) this._refrescarHistorialComprasDetalle();
+                this._refrescarReporteSiVisible();
             });
             this.proveedoresManager.iniciarEscuchaVisitas(() => {
                 if (this._proveedorDetalleActual) this._refrescarHistorialVisitasDetalle();
@@ -468,7 +467,7 @@ class TiendaApp {
                 if (seccion === 'reportes')       this.mostrarOpcionesReporte();
                 if (seccion === 'administracion') this._activarAdminPanel();
                 if (seccion === 'configuracion')  this._actualizarVistaTerminales();
-                if (seccion === 'proveedores')    this.actualizarVistaPedidos(); // Pedidos vive embebido aquí
+                if (seccion === 'proveedores')    this.actualizarVistaPedidos();
             }
         });
         document.getElementById('statsGrid').addEventListener('click', (e) => {
@@ -672,7 +671,6 @@ class TiendaApp {
         document.getElementById('btnPagoExacto').addEventListener('click',     () => this.establecerPagoExacto());
         document.getElementById('btnFinalizarVenta').addEventListener('click', () => this.finalizarVenta());
 
-        // Botón cobrar con tarjeta
         document.getElementById('btnCobrarTarjeta')?.addEventListener('click', () => this.abrirModalCobrarTarjeta());
 
         this._inicializarGranelListeners();
@@ -947,16 +945,11 @@ class TiendaApp {
             opcionesPago.cambio = pago - total;
         }
 
+        // NOTA: pago/cambio ahora quedan persistidos dentro del propio
+        // documento de venta (ver ventas.js) — resultado.venta ya trae
+        // esos valores correctos, no hace falta reasignarlos aquí.
         const resultado = await this.ventasManager.finalizarVenta(opcionesPago);
         if (!resultado.success) { this.uiManager.alerta(resultado.message); return; }
-
-        if (metodoPago === 'efectivo') {
-            resultado.venta.pago   = opcionesPago.pago;
-            resultado.venta.cambio = opcionesPago.cambio;
-        } else {
-            resultado.venta.pago   = total;
-            resultado.venta.cambio = 0;
-        }
 
         for (const item of resultado.venta.items) {
             const cantidadReducir = item.esGranel ? item.gramos : item.cantidad;
@@ -970,7 +963,7 @@ class TiendaApp {
 
         this.uiManager.alerta(
             `✅ Venta realizada exitosamente.\nAtendido por: ${usuarioNombre}\nMétodo: ${metodoPagoText}\nTotal: $${total.toFixed(2)}`
-            + (metodoPago === 'efectivo' ? `\nPago: $${opcionesPago.pago.toFixed(2)}\nCambio: $${opcionesPago.cambio.toFixed(2)}` : '')
+            + (metodoPago === 'efectivo' ? `\nPago: $${resultado.venta.pago.toFixed(2)}\nCambio: $${resultado.venta.cambio.toFixed(2)}` : '')
         );
 
         if (this.uiManager.confirmar('¿Descargar ticket de venta?')) {
@@ -1004,7 +997,6 @@ class TiendaApp {
         const contenedor = document.getElementById('cobrarTarjetaContenido');
         if (!contenedor) return;
 
-        // Limpiar estado anterior
         this.mercadoPagoManager.limpiarOrderActual();
         this._pagoTarjetaActivo    = false;
         this._terminalSeleccionada = null;
@@ -1014,7 +1006,6 @@ class TiendaApp {
             : '';
 
         contenedor.innerHTML = `
-            <!-- Paso 1: Selección de terminal y monto -->
             <div id="mpPaso1">
                 <div class="mp-total-badge">
                     <span class="mp-total-label">Total a cobrar ${testBadge}</span>
@@ -1048,7 +1039,6 @@ class TiendaApp {
                 </div>
             </div>
 
-            <!-- Paso 2: Estado de la order / esperando pago -->
             <div id="mpPaso2" class="hidden">
                 <div class="mp-estado-container" id="mpEstadoContenedor">
                     <span id="mpEstadoIcono" class="mp-estado-icono">📡</span>
@@ -1071,7 +1061,6 @@ class TiendaApp {
                 </div>
 
                 ${MP_IS_TEST_MODE ? `
-                <!-- Simulador solo en modo prueba -->
                 <div class="mp-simulator-section" id="mpSimulador">
                     <div class="mp-simulator-title">
                         Simulador de pago (solo en modo prueba)
@@ -1095,13 +1084,11 @@ class TiendaApp {
             </div>
         `;
 
-        // Eventos del modal
         document.getElementById('btnMPEnviar')?.addEventListener('click',       () => this._enviarCobroATerminal());
         document.getElementById('btnMPCancelarPaso1')?.addEventListener('click', () => this.cerrarModal('modalCobrarTarjeta'));
         document.getElementById('btnMPCancelarIntent')?.addEventListener('click', () => this._cancelarCobroTarjeta());
         document.getElementById('btnMPConfirmar')?.addEventListener('click',     () => this._confirmarPagoTarjeta());
 
-        // Botones del simulador (solo modo prueba)
         if (MP_IS_TEST_MODE) {
             document.getElementById('btnSimulateApproved')?.addEventListener('click', () => this._simularEstado('processed'));
             document.getElementById('btnSimulateRejected')?.addEventListener('click', () => this._simularEstado('failed'));
@@ -1131,22 +1118,18 @@ class TiendaApp {
             ? items[0].producto.nombre
             : `Venta de ${items.length} productos`;
 
-        // Pasar al paso 2
         document.getElementById('mpPaso1').classList.add('hidden');
         document.getElementById('mpPaso2').classList.remove('hidden');
 
-        // Ocultar simulador hasta tener la order
         if (MP_IS_TEST_MODE) {
             document.getElementById('mpSimulador')?.classList.add('hidden');
         }
 
         this._actualizarEstadoMP('created');
 
-        // Crear order con la Orders API
         const resultado = await this.mercadoPagoManager.crearOrder(terminalId, total, descripcion);
 
         if (!resultado.success) {
-            // Volver al paso 1
             document.getElementById('mpPaso2').classList.add('hidden');
             document.getElementById('mpPaso1').classList.remove('hidden');
             this.uiManager.alerta(`❌ No se pudo crear la order:\n${resultado.mensaje}`);
@@ -1155,19 +1138,16 @@ class TiendaApp {
 
         this._pagoTarjetaActivo = true;
 
-        // Mostrar Order ID
         const orderBadge = document.getElementById('mpOrderIdBadge');
         if (orderBadge) {
             orderBadge.textContent = `Order ID: ${resultado.orderId}`;
             orderBadge.classList.remove('hidden');
         }
 
-        // Mostrar simulador una vez creada la order
         if (MP_IS_TEST_MODE) {
             document.getElementById('mpSimulador')?.classList.remove('hidden');
         }
 
-        // Auditoría
         this.auditoriaManager.registrar('PAGO_TARJETA_INICIADO', {
             terminal: nombre,
             terminalId,
@@ -1175,7 +1155,6 @@ class TiendaApp {
             monto:    `$${total.toFixed(2)}`
         });
 
-        // Iniciar polling para detectar cambios de estado automáticamente
         this.mercadoPagoManager.setOnEstadoCambia((estado) => {
             this._actualizarEstadoMP(estado);
         });
@@ -1321,12 +1300,12 @@ class TiendaApp {
         document.getElementById('tablaProveedores').addEventListener('click', (e) => {
             const btn = e.target.closest('button');
             if (!btn) return;
-            const { accion, id } = btn.dataset;
-            if (accion === 'eliminar-proveedor')     this.eliminarProveedor(id);
-            if (accion === 'marcar-visita')          this.marcarVisita(id);
-            if (accion === 'editar-proveedor')       this.mostrarModalEditarProveedor(id);
-            if (accion === 'ver-detalle-proveedor')  this.mostrarModalDetalleProveedor(id);
-            if (accion === 'pedido-frecuente-rapido') this.crearPedidoRapidoFrecuente(id);
+            const { accion, id, listaId } = btn.dataset;
+            if (accion === 'eliminar-proveedor')      this.eliminarProveedor(id);
+            if (accion === 'marcar-visita')           this.marcarVisita(id);
+            if (accion === 'editar-proveedor')        this.mostrarModalEditarProveedor(id);
+            if (accion === 'ver-detalle-proveedor')   this.mostrarModalDetalleProveedor(id);
+            if (accion === 'pedido-frecuente-rapido') this.crearPedidoRapidoFrecuente(id, listaId);
         });
 
         document.getElementById('formEditarProveedor').addEventListener('submit', (e) => {
@@ -1500,7 +1479,7 @@ class TiendaApp {
     }
 
     // ============================================================
-    // DETALLE DE PROVEEDOR (Catálogo / Lista Frecuente / Historial Visitas / Historial Compras)
+    // DETALLE DE PROVEEDOR (Catálogo / Listas Frecuentes / Historial Visitas / Historial Compras)
     // ============================================================
     inicializarDetalleProveedor() {
         document.getElementById('detalleProveedorTabs')?.addEventListener('click', (e) => {
@@ -1509,7 +1488,6 @@ class TiendaApp {
             this._cambiarTabDetalleProveedor(tabBtn.dataset.tab);
         });
 
-        // Formulario: agregar producto al catálogo (SOLO selección de producto, sin precio propio)
         document.getElementById('formCatalogoProducto')?.addEventListener('submit', (e) => {
             e.preventDefault();
             this._agregarProductoAlCatalogo();
@@ -1528,15 +1506,22 @@ class TiendaApp {
             this.abrirModalPedidoCatalogo(this._proveedorDetalleActual.id, 'nuevo');
         });
 
-        // Botones de la pestaña "Lista Frecuente" (delegados porque se re-renderizan)
+        // Delegación en el panel de Listas Frecuentes (se re-renderiza seguido)
         document.getElementById('panelDetalle_frecuente')?.addEventListener('click', (e) => {
-            if (e.target.id === 'btnEditarListaFrecuente') {
+            if (e.target.id === 'btnNuevaListaFrecuente') {
                 this.cerrarModal('modalDetalleProveedor');
-                this.abrirModalPedidoCatalogo(this._proveedorDetalleActual.id, 'frecuente');
+                this.abrirModalPedidoCatalogo(this._proveedorDetalleActual.id, 'frecuente', null, null);
+                return;
             }
-            if (e.target.id === 'btnEliminarListaFrecuente') {
-                this._eliminarListaFrecuenteDetalle();
+            const btn = e.target.closest('button[data-accion]');
+            if (!btn) return;
+            const { accion, listaId } = btn.dataset;
+            if (accion === 'editar-lista-frecuente') {
+                this.cerrarModal('modalDetalleProveedor');
+                this.abrirModalPedidoCatalogo(this._proveedorDetalleActual.id, 'frecuente', null, listaId);
             }
+            if (accion === 'eliminar-lista-frecuente') this._eliminarListaFrecuenteDetalle(listaId);
+            if (accion === 'pedido-lista-frecuente')    this.crearPedidoRapidoFrecuente(this._proveedorDetalleActual.id, listaId);
         });
     }
 
@@ -1552,7 +1537,7 @@ class TiendaApp {
 
         this._poblarSelectProductosCatalogo();
         this._refrescarCatalogoDetalle();
-        this._refrescarListaFrecuenteDetalle();
+        this._refrescarListasFrecuentesDetalle();
         this._refrescarHistorialVisitasDetalle();
         this._refrescarHistorialComprasDetalle();
         this._cambiarTabDetalleProveedor('catalogo');
@@ -1591,19 +1576,22 @@ class TiendaApp {
         });
     }
 
-    /** Resuelve la lista frecuente cruda del proveedor contra Productos EN VIVO */
-    _resolverListaFrecuente(proveedorId) {
-        const items = this.proveedoresManager.obtenerListaFrecuente(proveedorId);
-        return items.map(i => {
-            const producto = this.productosManager.obtenerPorClave(i.productoClave);
-            return {
-                productoClave:  i.productoClave,
-                productoNombre: producto ? producto.nombre : `Producto #${i.productoClave}`,
-                precioCompra:   producto ? producto.precioCompra : 0,
-                cantidad:       i.cantidad,
-                existe:         !!producto
-            };
-        });
+    /** Resuelve TODAS las listas frecuentes del proveedor contra Productos EN VIVO */
+    _resolverListasFrecuentes(proveedorId) {
+        const listas = this.proveedoresManager.obtenerListasFrecuentes(proveedorId);
+        return listas.map(lista => ({
+            id:     lista.id,
+            nombre: lista.nombre,
+            items:  lista.items.map(i => {
+                const producto = this.productosManager.obtenerPorClave(i.productoClave);
+                return {
+                    productoClave:  i.productoClave,
+                    productoNombre: producto ? producto.nombre : `Producto #${i.productoClave}`,
+                    cantidad:       i.cantidad,
+                    existe:         !!producto
+                };
+            })
+        }));
     }
 
     _refrescarCatalogoDetalle() {
@@ -1614,10 +1602,10 @@ class TiendaApp {
         this.uiManager.renderizarCatalogoProveedor(this._resolverCatalogo(this._proveedorDetalleActual.id), contenedor);
     }
 
-    _refrescarListaFrecuenteDetalle() {
+    _refrescarListasFrecuentesDetalle() {
         if (!this._proveedorDetalleActual) return;
         const contenedor = document.getElementById('panelDetalle_frecuente');
-        this.uiManager.renderizarListaFrecuente(this._resolverListaFrecuente(this._proveedorDetalleActual.id), contenedor);
+        this.uiManager.renderizarListasFrecuentes(this._resolverListasFrecuentes(this._proveedorDetalleActual.id), contenedor);
     }
 
     _refrescarHistorialVisitasDetalle() {
@@ -1667,13 +1655,13 @@ class TiendaApp {
         }
     }
 
-    async _eliminarListaFrecuenteDetalle() {
+    async _eliminarListaFrecuenteDetalle(listaId) {
         if (!this._proveedorDetalleActual) return;
-        if (!this.uiManager.confirmar('¿Eliminar la lista frecuente de este proveedor?')) return;
+        if (!this.uiManager.confirmar('¿Eliminar esta lista frecuente?')) return;
 
-        const resultado = await this.proveedoresManager.eliminarListaFrecuente(this._proveedorDetalleActual.id);
+        const resultado = await this.proveedoresManager.eliminarListaFrecuente(this._proveedorDetalleActual.id, listaId);
         if (resultado.success) {
-            this._refrescarListaFrecuenteDetalle();
+            this._refrescarListasFrecuentesDetalle();
             this.actualizarVistaProveedores();
         } else {
             this.uiManager.alerta(resultado.message);
@@ -1682,7 +1670,6 @@ class TiendaApp {
 
     // ============================================================
     // MODAL MULTIPROPÓSITO: NUEVO PEDIDO / EDITAR PEDIDO / LISTA FRECUENTE
-    // Los tres reutilizan el mismo selector de catálogo con cantidades.
     // ============================================================
     inicializarPedidos() {
         document.getElementById('btnNuevoPedidoCatalogo')?.addEventListener('click', () => {
@@ -1701,8 +1688,8 @@ class TiendaApp {
             const btn = e.target.closest('button');
             if (!btn) return;
             const { accion, id } = btn.dataset;
-            if (accion === 'completar-pedido')       this.abrirModalRecepcionPedido(id);
-            if (accion === 'descargar-pedido')        this._descargarPedido(id);
+            if (accion === 'completar-pedido')        this.abrirModalRecepcionPedido(id);
+            if (accion === 'descargar-pedido')         this._descargarPedido(id);
             if (accion === 'editar-pedido')            this._editarPedido(id);
             if (accion === 'guardar-frecuente-pedido') this._guardarPedidoComoFrecuente(id);
             if (accion === 'eliminar-pedido')          this._eliminarPedido(id);
@@ -1725,35 +1712,50 @@ class TiendaApp {
     }
 
     /**
-     * @param {string|null} proveedorIdPreset - si se da, el select queda fijo en ese proveedor
+     * @param {string|null} proveedorIdPreset
      * @param {'nuevo'|'editar'|'frecuente'} modo
      * @param {string|null} pedidoId - requerido si modo === 'editar'
+     * @param {string|null} listaId  - si modo === 'frecuente': id de la lista a editar, o null para crear una nueva
      */
-    abrirModalPedidoCatalogo(proveedorIdPreset = null, modo = 'nuevo', pedidoId = null) {
+    abrirModalPedidoCatalogo(proveedorIdPreset = null, modo = 'nuevo', pedidoId = null, listaId = null) {
         if (!this.usuariosManager.tienePermiso('pedidos_gestionar')) {
             this.uiManager.alerta('❌ No tienes permiso para gestionar pedidos');
             return;
         }
 
-        this._modoPedidoModal  = modo;
-        this._pedidoEditandoId = pedidoId;
+        this._modoPedidoModal          = modo;
+        this._pedidoEditandoId         = pedidoId;
+        this._listaFrecuenteEditandoId = listaId;
 
-        const titulo  = document.querySelector('#modalPedidoCatalogo .modal-header h3');
+        const titulo       = document.querySelector('#modalPedidoCatalogo .modal-header h3');
         const btnConfirmar = document.getElementById('btnCrearPedidoCatalogo');
         const textosPorModo = {
             'nuevo':     { titulo: '🛒 Nuevo Pedido desde Catálogo', boton: '✅ Crear Pedido' },
             'editar':    { titulo: '✏️ Editar Pedido',                boton: '💾 Guardar Cambios' },
-            'frecuente': { titulo: '⭐ Editar Lista Frecuente',        boton: '💾 Guardar Lista Frecuente' }
+            'frecuente': { titulo: listaId ? '⭐ Editar Lista Frecuente' : '⭐ Nueva Lista Frecuente', boton: '💾 Guardar Lista Frecuente' }
         };
         if (titulo)       titulo.textContent = textosPorModo[modo].titulo;
         if (btnConfirmar) btnConfirmar.textContent = textosPorModo[modo].boton;
+
+        // Campo "Nombre de la lista" solo visible en modo frecuente
+        const grupoNombreLista = document.getElementById('pedidoCatalogoNombreListaGroup');
+        const inputNombreLista = document.getElementById('pedidoCatalogoNombreLista');
+        if (grupoNombreLista) grupoNombreLista.classList.toggle('hidden', modo !== 'frecuente');
+        if (inputNombreLista) {
+            if (modo === 'frecuente' && listaId && proveedorIdPreset) {
+                const lista = this.proveedoresManager.obtenerListaFrecuentePorId(proveedorIdPreset, listaId);
+                inputNombreLista.value = lista?.nombre || '';
+            } else {
+                inputNombreLista.value = '';
+            }
+        }
 
         const select = document.getElementById('pedidoCatalogoProveedor');
         const proveedores = this.proveedoresManager.obtenerTodos();
         select.innerHTML = '<option value="">-- Selecciona un proveedor --</option>' +
             proveedores.map(p => `<option value="${p.id}">${p.nombre}</option>`).join('');
 
-        // En "editar" y "frecuente" el proveedor queda fijo (no tiene sentido cambiarlo)
+        // En "editar" y "frecuente" el proveedor queda fijo
         select.disabled = (modo !== 'nuevo');
 
         if (proveedorIdPreset) {
@@ -1776,15 +1778,13 @@ class TiendaApp {
 
         const catalogoResuelto = this._resolverCatalogo(proveedorId);
 
-        // Precargar cantidades según el modo (editar pedido / editar lista frecuente)
         let cantidadesPorClave = {};
         if (this._modoPedidoModal === 'editar' && this._pedidoEditandoId) {
             const pedido = this.pedidosManager.obtenerPorId(this._pedidoEditandoId);
             if (pedido) pedido.items.forEach(i => { cantidadesPorClave[i.productoClave] = i.cantidad; });
-        } else if (this._modoPedidoModal === 'frecuente') {
-            this.proveedoresManager.obtenerListaFrecuente(proveedorId).forEach(i => {
-                cantidadesPorClave[i.productoClave] = i.cantidad;
-            });
+        } else if (this._modoPedidoModal === 'frecuente' && this._listaFrecuenteEditandoId) {
+            const lista = this.proveedoresManager.obtenerListaFrecuentePorId(proveedorId, this._listaFrecuenteEditandoId);
+            (lista?.items || []).forEach(i => { cantidadesPorClave[i.productoClave] = i.cantidad; });
         }
 
         const itemsConCantidad = catalogoResuelto.map(item => ({
@@ -1817,10 +1817,11 @@ class TiendaApp {
         } else if (this._modoPedidoModal === 'editar') {
             resultado = await this.pedidosManager.actualizarItemsPedido(this._pedidoEditandoId, itemsCatalogo);
         } else if (this._modoPedidoModal === 'frecuente') {
-            resultado = await this.proveedoresManager.guardarListaFrecuente(
-                proveedorId,
-                itemsCatalogo.map(i => ({ productoClave: i.productoClave, cantidad: i.cantidad }))
-            );
+            const nombre = document.getElementById('pedidoCatalogoNombreLista')?.value || '';
+            const itemsLista = itemsCatalogo.map(i => ({ productoClave: i.productoClave, cantidad: i.cantidad }));
+            resultado = this._listaFrecuenteEditandoId
+                ? await this.proveedoresManager.actualizarListaFrecuente(proveedorId, this._listaFrecuenteEditandoId, { nombre, items: itemsLista })
+                : await this.proveedoresManager.crearListaFrecuente(proveedorId, nombre, itemsLista);
         }
 
         if (resultado.success) {
@@ -1835,7 +1836,7 @@ class TiendaApp {
             this.actualizarVistaProveedores();
             if (this._proveedorDetalleActual?.id === proveedorId) {
                 this._refrescarCatalogoDetalle();
-                this._refrescarListaFrecuenteDetalle();
+                this._refrescarListasFrecuentesDetalle();
             }
         } else {
             this.uiManager.alerta(resultado.message);
@@ -1856,14 +1857,18 @@ class TiendaApp {
     async _guardarPedidoComoFrecuente(id) {
         const pedido = this.pedidosManager.obtenerPorId(id);
         if (!pedido) return;
-        if (!this.uiManager.confirmar(`¿Guardar los productos de este pedido como la Lista Frecuente de "${pedido.proveedorNombre}"? Esto reemplaza la lista anterior si existía.`)) return;
+
+        const nombreSugerido = `Pedido habitual — ${pedido.proveedorNombre}`;
+        const nombre = this.uiManager.prompt('Nombre para esta lista frecuente:', nombreSugerido);
+        if (!nombre) return;
 
         const items = pedido.items.map(i => ({ productoClave: i.productoClave, cantidad: i.cantidad }));
-        const resultado = await this.proveedoresManager.guardarListaFrecuente(pedido.proveedorId, items);
+        const resultado = await this.proveedoresManager.crearListaFrecuente(pedido.proveedorId, nombre, items);
 
         if (resultado.success) {
             this.uiManager.alerta('⭐ Lista frecuente guardada correctamente');
             this.actualizarVistaProveedores();
+            if (this._proveedorDetalleActual?.id === pedido.proveedorId) this._refrescarListasFrecuentesDetalle();
         } else {
             this.uiManager.alerta(resultado.message);
         }
@@ -1880,8 +1885,8 @@ class TiendaApp {
         else this.actualizarVistaPedidos();
     }
 
-    /** Acceso rápido: crea un pedido nuevo usando la Lista Frecuente del proveedor tal cual está guardada */
-    async crearPedidoRapidoFrecuente(proveedorId) {
+    /** Acceso rápido: crea un pedido nuevo usando UNA lista frecuente específica */
+    async crearPedidoRapidoFrecuente(proveedorId, listaId) {
         if (!this.usuariosManager.tienePermiso('pedidos_gestionar')) {
             this.uiManager.alerta('❌ No tienes permiso para crear pedidos');
             return;
@@ -1889,13 +1894,10 @@ class TiendaApp {
         const proveedor = this.proveedoresManager.obtenerPorId(proveedorId);
         if (!proveedor) return;
 
-        const listaFrecuente = this.proveedoresManager.obtenerListaFrecuente(proveedorId);
-        if (listaFrecuente.length === 0) {
-            this.uiManager.alerta('Este proveedor no tiene una lista frecuente guardada');
-            return;
-        }
+        const lista = this.proveedoresManager.obtenerListaFrecuentePorId(proveedorId, listaId);
+        if (!lista) { this.uiManager.alerta('Esta lista frecuente ya no existe'); return; }
 
-        const itemsCatalogo = listaFrecuente.map(li => {
+        const itemsCatalogo = lista.items.map(li => {
             const producto = this.productosManager.obtenerPorClave(li.productoClave);
             return producto ? {
                 productoClave:  producto.clave,
@@ -1906,15 +1908,15 @@ class TiendaApp {
         }).filter(Boolean);
 
         if (itemsCatalogo.length === 0) {
-            this.uiManager.alerta('Los productos de la lista frecuente ya no existen en Productos');
+            this.uiManager.alerta('Los productos de esta lista ya no existen en Productos');
             return;
         }
 
-        if (!this.uiManager.confirmar(`¿Crear un nuevo pedido a "${proveedor.nombre}" con los ${itemsCatalogo.length} producto(s) de su lista frecuente?`)) return;
+        if (!this.uiManager.confirmar(`¿Crear un nuevo pedido a "${proveedor.nombre}" con la lista "${lista.nombre}" (${itemsCatalogo.length} producto(s))?`)) return;
 
         const resultado = await this.pedidosManager.crearPedidoDesdeCatalogo(proveedor, itemsCatalogo);
         if (resultado.success) {
-            this.uiManager.alerta('✅ Pedido frecuente creado');
+            this.uiManager.alerta('✅ Pedido creado desde la lista frecuente');
             this.actualizarVistaPedidos();
         } else {
             this.uiManager.alerta(resultado.message);
@@ -1925,11 +1927,6 @@ class TiendaApp {
     // RECEPCIÓN DE PEDIDO (checklist con cantidad y precio reales)
     // ============================================================
     inicializarRecepcionPedido() {
-        document.getElementById('chkMarcarTodoRecibido')?.addEventListener('change', (e) => {
-            document.querySelectorAll('.chk-item-recibido').forEach(chk => { chk.checked = e.target.checked; });
-        });
-
-        // Delegación: el checkbox "marcar todo" vive dentro del contenedor que se re-renderiza
         document.getElementById('recepcionPedidoContenedor')?.addEventListener('change', (e) => {
             if (e.target.id === 'chkMarcarTodoRecibido') {
                 document.querySelectorAll('.chk-item-recibido').forEach(chk => { chk.checked = e.target.checked; });
@@ -1979,7 +1976,13 @@ class TiendaApp {
 
         if (resultado.success) {
             this.cerrarModal('modalRecepcionPedido');
-            this.uiManager.alerta('✅ Pedido recibido. El stock de los productos marcados ya fue actualizado.');
+
+            let mensaje = '✅ Pedido recibido. El stock de los productos marcados ya fue actualizado.';
+            if (resultado.productosNoActualizados?.length > 0) {
+                mensaje += `\n\n⚠️ No se pudo actualizar el stock de: ${resultado.productosNoActualizados.join(', ')} (probablemente fueron eliminados de Productos). El resto sí se registró correctamente en Compras.`;
+            }
+            this.uiManager.alerta(mensaje);
+
             this.actualizarVistaPedidos();
             this.actualizarVistaProductos();
             this.actualizarDashboard();
@@ -1999,12 +2002,22 @@ class TiendaApp {
         document.getElementById('btnGenerarReporte').addEventListener('click', () => this.generarReporte());
     }
 
+    /** Si el usuario está viendo Reportes, lo refresca solo cuando cambian ventas o pedidos */
+    _refrescarReporteSiVisible() {
+        if (this.uiManager.currentSection === 'reportes' && this.datosInicializados) {
+            this.generarReporte();
+        }
+    }
+
     mostrarOpcionesReporte() {
         const tipoDato       = document.getElementById('tipoDatoReporte')?.value || 'ventas';
         const tipo           = document.getElementById('tipoReporte').value;
         const opcionesFecha  = document.getElementById('opcionesFecha');
 
-        // El filtro de proveedor solo aplica al reporte de Compras
+        if (tipoDato !== 'compras') {
+            document.getElementById('btnExportarReporteCompras')?.remove();
+        }
+
         document.getElementById('opcionProveedorReporte')?.classList.toggle('hidden', tipoDato !== 'compras');
         if (tipoDato === 'compras') this._poblarSelectProveedorReporte();
 
@@ -2026,13 +2039,15 @@ class TiendaApp {
         }
     }
 
+    /** Siempre refresca la lista de proveedores del filtro (antes solo se poblaba una vez) */
     _poblarSelectProveedorReporte() {
         const select = document.getElementById('proveedorReporteSelect');
-        if (!select || select.dataset.poblado === 'true') return;
+        if (!select) return;
+        const valorActual = select.value;
         const proveedores = this.proveedoresManager.obtenerTodos();
         select.innerHTML = '<option value="">Todos los proveedores</option>' +
             proveedores.map(p => `<option value="${p.id}">${p.nombre}</option>`).join('');
-        select.dataset.poblado = 'true';
+        if (valorActual && proveedores.some(p => p.id === valorActual)) select.value = valorActual;
     }
 
     _leerParametrosPeriodo(tipo) {
@@ -2055,7 +2070,11 @@ class TiendaApp {
         const tipoDato = document.getElementById('tipoDatoReporte')?.value || 'ventas';
 
         if (tipoDato === 'compras') { this._generarReporteCompras(); return; }
-        if (tipoDato === 'flujo')   { this._generarReporteFlujo();   return; }
+
+        // No estamos en Compras: si quedó el botón de exportar de una vista anterior, se quita.
+        document.getElementById('btnExportarReporteCompras')?.remove();
+
+        if (tipoDato === 'flujo') { this._generarReporteFlujo(); return; }
 
         if (!this.usuariosManager.tienePermiso('reportes_generar') &&
             !this.usuariosManager.tienePermiso('reportes_ventas')) {
@@ -2070,12 +2089,18 @@ class TiendaApp {
         if (tipo === 'rango' && (!parametros.fechaInicio || !parametros.fechaFin)) { this.uiManager.alerta('Seleccione ambas fechas'); return; }
 
         const reporte = this.reportesManager.generarReporte(tipo, parametros);
-        if (reporte) {
-            const contenedor  = document.getElementById('contenidoReporte');
-            const todasVentas = this.ventasManager.obtenerTodas();
-            this.uiManager.renderizarReporte(reporte, contenedor, todasVentas, this.reportesManager);
-            this.inicializarEventListenersReporte(reporte, todasVentas);
-        }
+        if (!reporte) return;
+
+        // Se clona/reemplaza el contenedor para no acumular listeners
+        // cada vez que se regenera el reporte (evita fugas de memoria y
+        // duplicidad de eventos si se genera varias veces seguidas).
+        const contenedorOriginal = document.getElementById('contenidoReporte');
+        const contenedor = contenedorOriginal.cloneNode(false);
+        contenedorOriginal.parentNode.replaceChild(contenedor, contenedorOriginal);
+
+        const todasVentas = this.ventasManager.obtenerTodas();
+        this.uiManager.renderizarReporte(reporte, contenedor, todasVentas, this.reportesManager);
+        this.inicializarEventListenersReporte(reporte, todasVentas);
     }
 
     _generarReporteCompras() {
@@ -2126,7 +2151,6 @@ class TiendaApp {
         this.uiManager.renderizarReporteFlujo(reporte, contenedor);
     }
 
-    /** Inserta (o reutiliza) el botón "Exportar" arriba del contenedor de reporte */
     _insertarBotonExportarReporte(contenedor, onClick) {
         let btnExportar = document.getElementById('btnExportarReporteCompras');
         if (!btnExportar) {
@@ -2221,7 +2245,7 @@ class TiendaApp {
     }
 
     // ============================================================
-    // TERMINALES MERCADO PAGO — GESTIÓN (con Terminal ID de la API de MP)
+    // TERMINALES MERCADO PAGO
     // ============================================================
     inicializarTerminales() {
         // El form se bindea en actualizarInfoUsuarioEnConfiguracion()

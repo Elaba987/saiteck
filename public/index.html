@@ -427,7 +427,7 @@
                     <h3>Lista de Proveedores</h3>
                     <p style="color:#718096;font-size:13px;margin-bottom:10px;">
                         💡 Usa <strong>"Ver Detalle"</strong> en cada proveedor para gestionar su catálogo de productos,
-                        su Lista Frecuente, su historial de visitas y su historial de compras.
+                        sus Listas Frecuentes, su historial de visitas y su historial de compras.
                     </p>
                     <div class="search-bar">
                         <input type="text" id="buscarProveedor" placeholder="Buscar proveedor...">
@@ -457,8 +457,8 @@
                         </div>
                         <p style="color:#718096;font-size:13px;margin-bottom:20px;">
                             Arma pedidos usando el catálogo de productos de cada proveedor. Al recibir un pedido,
-                            el stock de cada producto marcado se actualiza automáticamente y queda en el historial
-                            de compras y en Reportes.
+                            revisas un checklist producto por producto: el stock de cada uno marcado como recibido
+                            se actualiza automáticamente, y todo queda en el historial de compras y en Reportes.
                         </p>
                         <div id="listaPedidosPendientes"></div>
                     </div>
@@ -841,7 +841,7 @@
 
     <!-- ═══════════════════════════════════════════════════════
          MODAL — DETALLE DE PROVEEDOR
-         Catálogo / Lista Frecuente / Historial Visitas / Historial Compras
+         Catálogo / Listas Frecuentes / Historial Visitas / Historial Compras
     ═══════════════════════════════════════════════════════ -->
     <div id="modalDetalleProveedor" class="modal-overlay hidden" style="display:none;">
         <div class="modal-content" style="max-width:800px;">
@@ -863,7 +863,7 @@
 
             <div class="detalle-tabs" id="detalleProveedorTabs">
                 <button type="button" class="detalle-tab-btn active" data-tab="catalogo">📋 Catálogo</button>
-                <button type="button" class="detalle-tab-btn" data-tab="frecuente">⭐ Lista Frecuente</button>
+                <button type="button" class="detalle-tab-btn" data-tab="frecuente">⭐ Listas Frecuentes</button>
                 <button type="button" class="detalle-tab-btn" data-tab="visitas">🚚 Historial de Visitas</button>
                 <button type="button" class="detalle-tab-btn" data-tab="compras">🧾 Historial de Compras</button>
             </div>
@@ -884,7 +884,7 @@
                 <div id="tablaCatalogoProveedor"></div>
             </div>
 
-            <!-- Panel: Lista Frecuente -->
+            <!-- Panel: Listas Frecuentes (0 a muchas) -->
             <div id="panelDetalle_frecuente" class="hidden"></div>
 
             <!-- Panel: Historial de visitas -->
@@ -913,6 +913,13 @@
                 </select>
             </div>
 
+            <!-- Solo visible en modo "Lista Frecuente" (nueva o editar) -->
+            <div class="form-group hidden" id="pedidoCatalogoNombreListaGroup">
+                <label>Nombre de la Lista Frecuente</label>
+                <input type="text" id="pedidoCatalogoNombreLista"
+                       placeholder="Ej: Pedido semanal, Insumos de limpieza...">
+            </div>
+
             <p style="color:#718096;font-size:13px;margin-bottom:10px;">
                 Indica la cantidad de cada producto. Los productos con cantidad 0 no se incluirán.
             </p>
@@ -939,7 +946,8 @@
 
             <p style="color:#718096;font-size:13px;margin-bottom:14px;">
                 Revisa qué productos llegaron. Puedes ajustar la cantidad recibida y el precio de compra real
-                de cada uno — el stock solo se actualiza para los productos marcados como recibidos.
+                de cada uno — ese precio ajustado solo aplica a este pedido (Compras, Salidas), nunca cambia
+                el precio de compra guardado en Productos.
             </p>
 
             <div id="recepcionPedidoContenedor"></div>

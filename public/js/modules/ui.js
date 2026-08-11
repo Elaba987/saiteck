@@ -23,7 +23,6 @@ export class UIManager {
 
     // === NAVEGACIÓN ===
     mostrarSeccion(seccionId) {
-        // La sección de administración no requiere permiso granular, se controla en app.js
         if (seccionId !== 'administracion') {
             if (window.appInstance && window.appInstance.usuariosManager) {
                 const usuarioActual = window.appInstance.usuariosManager.obtenerUsuarioActual();
@@ -44,7 +43,6 @@ export class UIManager {
         }
         this.actualizarMenuActivo(seccionId);
 
-        // Auto-focus en clave al entrar a ventas (soporte lector de código de barras)
         if (seccionId === 'ventas') {
             setTimeout(() => {
                 const claveInput = document.getElementById('buscarClaveVenta');
@@ -52,7 +50,6 @@ export class UIManager {
             }, 100);
         }
 
-        // Si se accede a configuración, actualizar datos
         if (seccionId === 'configuracion' && window.configuracionManager) {
             window.configuracionManager.actualizarEmailUsuario();
             window.configuracionManager.cargarColoresDesdeFirestore();
@@ -96,8 +93,6 @@ export class UIManager {
     }
 
     // === RENDERIZADO DE MENÚ ===
-    // NOTA: "Pedidos" ya NO es una sección propia del sidebar — vive
-    // embebido dentro de la sección "Proveedores" (ver app.js/index.html).
     renderizarMenu(contenedor) {
         const menuItems = [
             { id: 'dashboard',      icono: '📊', texto: 'Dashboard' },
@@ -258,8 +253,8 @@ export class UIManager {
     }
 
     // === RENDERIZADO DE PROVEEDORES ===
-    // NUEVO: muestra una insignia + botón de acceso rápido cuando el
-    // proveedor tiene Lista Frecuente Y una fecha de visita asignada.
+    // Un botón de acceso rápido POR CADA lista frecuente (0 a muchas),
+    // visible solo si el proveedor tiene fechaVisita asignada.
     renderizarTablaProveedores(proveedores, tbody, proveedoresManager) {
         if (!tbody) return;
 
@@ -295,14 +290,15 @@ export class UIManager {
                    </div>`
                 : '';
 
-            // ── NUEVO: Lista Frecuente disponible + fecha de visita asignada ──
-            const tieneListaFrecuente = (proveedor.listaFrecuente || []).length > 0;
-            const listaFrecuenteBloque = (tieneListaFrecuente && proveedor.fechaVisita && puedeGestionarPedidos)
-                ? `<div style="margin-top:6px;">
-                       <button class="btn btn-success" style="padding:6px 12px;font-size:12px;"
-                           data-accion="pedido-frecuente-rapido" data-id="${proveedor.id}">
-                           ⭐ Pedido Frecuente Disponible
-                       </button>
+            const listasFrecuentes = proveedor.listasFrecuentes || [];
+            const listasFrecuentesBloque = (listasFrecuentes.length > 0 && proveedor.fechaVisita && puedeGestionarPedidos)
+                ? `<div style="margin-top:6px;display:flex;flex-direction:column;gap:4px;align-items:flex-start;">
+                       ${listasFrecuentes.map(l => `
+                           <button class="btn btn-success" style="padding:5px 10px;font-size:11px;"
+                               data-accion="pedido-frecuente-rapido" data-id="${proveedor.id}" data-lista-id="${l.id}">
+                               ⭐ ${l.nombre}
+                           </button>
+                       `).join('')}
                    </div>`
                 : '';
 
@@ -312,7 +308,7 @@ export class UIManager {
                         <strong>${proveedor.nombre}</strong>
                         ${infoReparto}
                         ${catalogoBadge}
-                        ${listaFrecuenteBloque}
+                        ${listasFrecuentesBloque}
                     </td>
                     <td>${proveedor.telefono || '-'}</td>
                     <td>${proveedor.email || '-'}</td>
@@ -618,10 +614,7 @@ export class UIManager {
 
     // ═══════════════════════════════════════════════════════════════
     // CATÁLOGO DE PRODUCTOS DEL PROVEEDOR
-    //
-    // `itemsResueltos` viene YA resuelto por app.js contra ProductosManager:
-    // [{ productoClave, productoNombre, precioCompra, existe }]
-    // No hay edición de precio local — el precio siempre es el de Productos.
+    // `itemsResueltos`: [{ productoClave, productoNombre, precioCompra, existe }]
     // ═══════════════════════════════════════════════════════════════
 
     renderizarCatalogoProveedor(itemsResueltos, contenedor) {
@@ -668,7 +661,6 @@ export class UIManager {
     }
 
     // === Selector de productos para armar un pedido (o Lista Frecuente) desde el catálogo ===
-    // `itemsResueltos`: [{ productoClave, productoNombre, precioCompra, existe, cantidadInicial }]
     renderizarSelectorPedidoDesdeCatalogo(itemsResueltos, contenedor) {
         if (!contenedor) return;
 
@@ -704,48 +696,51 @@ export class UIManager {
     }
 
     // ═══════════════════════════════════════════════════════════════
-    // NUEVO — LISTA FRECUENTE (plantilla persistente por proveedor)
+    // LISTAS FRECUENTES (0 a muchas por proveedor)
     // ═══════════════════════════════════════════════════════════════
 
-    renderizarListaFrecuente(itemsResueltos, contenedor) {
+    renderizarListasFrecuentes(listas, contenedor) {
         if (!contenedor) return;
 
-        if (!itemsResueltos || itemsResueltos.length === 0) {
-            contenedor.innerHTML = `
+        const encabezado = `
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:10px;">
+                <p style="font-size:13px;color:#718096;margin:0;">
+                    Cada lista queda disponible como acceso rápido en Proveedores y en el Dashboard
+                    mientras este proveedor tenga una visita programada.
+                </p>
+                <button class="btn btn-primary" id="btnNuevaListaFrecuente" style="white-space:nowrap;">➕ Nueva Lista</button>
+            </div>
+        `;
+
+        if (!listas || listas.length === 0) {
+            contenedor.innerHTML = encabezado + `
                 <div style="text-align:center;padding:24px;color:#718096;">
                     <span style="font-size:32px;">⭐</span>
-                    <p style="margin-top:8px;">Este proveedor no tiene una lista frecuente guardada.</p>
-                    <p style="font-size:13px;margin-top:4px;">
-                        Crea un pedido y usa "Guardar como Lista Frecuente" para que quede disponible
-                        cada vez que este proveedor tenga una visita programada.
-                    </p>
+                    <p style="margin-top:8px;">Este proveedor no tiene listas frecuentes guardadas todavía.</p>
                 </div>`;
             return;
         }
 
-        contenedor.innerHTML = `
-            <p style="font-size:13px;color:#718096;margin-bottom:10px;">
-                Esta es la lista que se usa cada vez que tocas <strong>"⭐ Pedido Frecuente Disponible"</strong>.
-            </p>
-            <div style="max-height:280px;overflow-y:auto;margin-bottom:14px;">
-                ${itemsResueltos.map(p => `
-                    <div style="display:flex;justify-content:space-between;align-items:center;
-                                background:#f7fafc;border:1px solid #e2e8f0;border-radius:8px;
-                                padding:10px 14px;margin-bottom:6px;">
-                        <span>${p.existe ? p.productoNombre : `${p.productoNombre} <small style="color:#f56565;">(eliminado)</small>`}</span>
-                        <strong>${p.cantidad}</strong>
-                    </div>
-                `).join('')}
+        contenedor.innerHTML = encabezado + listas.map(lista => `
+            <div style="background:#f7fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px 16px;margin-bottom:12px;">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                    <strong>⭐ ${lista.nombre}</strong>
+                    <span style="font-size:12px;color:#718096;">${lista.items.length} producto(s)</span>
+                </div>
+                <div style="font-size:13px;color:#4a5568;margin-bottom:10px;">
+                    ${lista.items.map(i => `${i.existe ? i.productoNombre : `${i.productoNombre} <small style="color:#f56565;">(eliminado)</small>`} ×${i.cantidad}`).join(', ')}
+                </div>
+                <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                    <button class="btn btn-success" style="padding:6px 12px;font-size:12px;" data-accion="pedido-lista-frecuente" data-lista-id="${lista.id}">🛒 Crear Pedido</button>
+                    <button class="btn btn-primary" style="padding:6px 12px;font-size:12px;" data-accion="editar-lista-frecuente" data-lista-id="${lista.id}">✏️ Editar</button>
+                    <button class="btn btn-danger" style="padding:6px 12px;font-size:12px;" data-accion="eliminar-lista-frecuente" data-lista-id="${lista.id}">🗑️ Eliminar</button>
+                </div>
             </div>
-            <div style="display:flex;gap:8px;flex-wrap:wrap;">
-                <button class="btn btn-primary" id="btnEditarListaFrecuente">✏️ Editar Lista</button>
-                <button class="btn btn-danger" id="btnEliminarListaFrecuente">🗑️ Eliminar Lista</button>
-            </div>
-        `;
+        `).join('');
     }
 
     // ═══════════════════════════════════════════════════════════════
-    // NUEVO — HISTORIAL DE VISITAS
+    // HISTORIAL DE VISITAS
     // ═══════════════════════════════════════════════════════════════
 
     renderizarHistorialVisitas(visitas, contenedor) {
@@ -783,8 +778,7 @@ export class UIManager {
     }
 
     // ═══════════════════════════════════════════════════════════════
-    // PEDIDOS (lista de pendientes) — ahora muestra la descripción de
-    // productos de cada pedido y permite Editar / Guardar como Frecuente.
+    // PEDIDOS (lista de pendientes)
     // ═══════════════════════════════════════════════════════════════
 
     renderizarTablaPedidos(pedidos, contenedor) {
@@ -823,7 +817,7 @@ export class UIManager {
                         <button class="btn btn-success" data-accion="completar-pedido" data-id="${p.id}">✅ Recibir Pedido</button>
                         <button class="btn btn-primary" data-accion="editar-pedido" data-id="${p.id}">✏️ Editar</button>
                         <button class="btn btn-secondary" data-accion="descargar-pedido" data-id="${p.id}">📥 Descargar</button>
-                        <button class="btn btn-secondary" data-accion="guardar-frecuente-pedido" data-id="${p.id}">⭐ Guardar como Frecuente</button>
+                        <button class="btn btn-secondary" data-accion="guardar-frecuente-pedido" data-id="${p.id}">⭐ Guardar como Lista Frecuente</button>
                         <button class="btn btn-danger" data-accion="eliminar-pedido" data-id="${p.id}">🗑️ Eliminar</button>
                     </div>
                 </div>`;
@@ -831,8 +825,7 @@ export class UIManager {
     }
 
     // ═══════════════════════════════════════════════════════════════
-    // NUEVO — CHECKLIST DE RECEPCIÓN DE PEDIDO
-    // Cada item: checkbox recibido, cantidad recibida, precio de compra real.
+    // CHECKLIST DE RECEPCIÓN DE PEDIDO
     // ═══════════════════════════════════════════════════════════════
 
     renderizarChecklistRecepcion(pedido, contenedor) {
@@ -865,6 +858,7 @@ export class UIManager {
                                 <label style="font-size:12px;">Precio de compra real</label>
                                 <input type="number" step="0.01" min="0" class="input-precio-recibido"
                                        value="${item.precioCompra}">
+                                <small style="color:#a0aec0;">Solo aplica a este pedido, no cambia el precio en Productos.</small>
                             </div>
                         </div>
                     </div>
@@ -874,7 +868,7 @@ export class UIManager {
     }
 
     // ═══════════════════════════════════════════════════════════════
-    // HISTORIAL DE COMPRAS POR PROVEEDOR (pedidos completados)
+    // HISTORIAL DE COMPRAS POR PROVEEDOR
     // ═══════════════════════════════════════════════════════════════
 
     renderizarHistorialComprasProveedor(pedidos, contenedor) {
@@ -974,13 +968,14 @@ export class UIManager {
     }
 
     // ═══════════════════════════════════════════════════════════════
-    // NUEVO — REPORTE DE ENTRADAS Y SALIDAS (flujo de caja)
+    // REPORTE DE ENTRADAS Y SALIDAS (flujo de caja)
     // ═══════════════════════════════════════════════════════════════
 
     renderizarReporteFlujo(reporte, contenedor) {
         if (!contenedor) return;
 
-        const netoColor = reporte.neto >= 0 ? '#48bb78' : '#f56565';
+        const netoColor     = reporte.neto >= 0 ? '#48bb78' : '#f56565';
+        const gananciaColor = reporte.gananciaNeta >= 0 ? '#48bb78' : '#f56565';
 
         contenedor.innerHTML = `
             <div class="stats-grid">
@@ -999,7 +994,7 @@ export class UIManager {
                     <div class="stat-value">$${reporte.salidasCambio.toFixed(2)}</div>
                 </div>
                 <div class="stat-card" style="background:linear-gradient(135deg,${netoColor} 0%,${netoColor}cc 100%);">
-                    <h4>${reporte.neto >= 0 ? '📈' : '📉'} Flujo Neto</h4>
+                    <h4>${reporte.neto >= 0 ? '📈' : '📉'} Flujo Neto (Caja)</h4>
                     <div class="stat-value">$${reporte.neto.toFixed(2)}</div>
                 </div>
             </div>
@@ -1009,11 +1004,30 @@ export class UIManager {
                 <table>
                     <tbody>
                         <tr><td><strong>Total Entradas</strong></td><td style="text-align:right;color:#276749;font-weight:700;">$${reporte.entradas.toFixed(2)}</td></tr>
-                        <tr><td>&nbsp;&nbsp;— Pagos a proveedores</td><td style="text-align:right;color:#c53030;">-$${reporte.salidasProveedor.toFixed(2)}</td></tr>
                         <tr><td>&nbsp;&nbsp;— Cambio entregado a clientes</td><td style="text-align:right;color:#c53030;">-$${reporte.salidasCambio.toFixed(2)}</td></tr>
-                        <tr style="border-top:2px solid #e2e8f0;"><td><strong>Flujo Neto</strong></td><td style="text-align:right;font-weight:800;color:${netoColor};">$${reporte.neto.toFixed(2)}</td></tr>
+                        <tr><td>&nbsp;&nbsp;— Pagos a proveedores</td><td style="text-align:right;color:#c53030;">-$${reporte.salidasProveedor.toFixed(2)}</td></tr>
+                        <tr style="border-top:2px solid #e2e8f0;"><td><strong>Flujo Neto (dinero que entró/salió de caja)</strong></td><td style="text-align:right;font-weight:800;color:${netoColor};">$${reporte.neto.toFixed(2)}</td></tr>
                     </tbody>
                 </table>
+            </div>
+
+            <div style="background:#f7fafc;border:2px dashed #cbd5e0;padding:18px 20px;border-radius:12px;margin-top:16px;">
+                <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
+                    <div>
+                        <strong style="color:#2d3748;">💹 Ganancia Neta (margen contable) de este periodo</strong>
+                        <div style="font-size:22px;font-weight:800;color:${gananciaColor};margin-top:4px;">
+                            $${reporte.gananciaNeta.toFixed(2)}
+                        </div>
+                    </div>
+                </div>
+                <p style="font-size:12px;color:#718096;margin-top:10px;line-height:1.6;">
+                    <strong>¿Por qué puede ser distinto al Flujo Neto?</strong> El Flujo Neto es el dinero que
+                    realmente entró y salió de caja en este periodo. La Ganancia Neta es el margen de lo que
+                    <em>vendiste</em> (ingresos menos costo de esa mercancía), sin importar cuándo se le pagó
+                    al proveedor. Si compraste inventario para vender después, o vendiste mercancía comprada en
+                    otro periodo, es normal que los dos números no coincidan — ambas cifras son correctas, solo
+                    miden cosas distintas.
+                </p>
             </div>
         `;
     }

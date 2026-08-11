@@ -47,7 +47,6 @@ export class DashboardManager {
         const stats = this.obtenerEstadisticas();
         const meta  = window.configuracionManager?.obtenerMetaVentasDiaria() || 0;
 
-        // ── Cards de estadísticas ──
         contenedor.innerHTML = `
             <div class="stat-card" data-section="reportes" style="cursor:pointer;">
                 <h4>Ventas Hoy</h4>
@@ -67,13 +66,8 @@ export class DashboardManager {
             </div>
         `;
 
-        // ── Barra de meta de ventas ──
         this._renderizarBarraMeta(stats.ventasHoy, meta);
-
-        // ── Botón descargar inventario ──
         this._renderizarBotonInventario();
-
-        // ── Alertas y próximas visitas ──
         this.renderizarAlertasStock();
         this.renderizarProximasVisitas();
     }
@@ -106,7 +100,6 @@ export class DashboardManager {
         const completada  = ventasHoy >= meta;
         const falta       = Math.max(meta - ventasHoy, 0);
 
-        // Color dinámico: rojo → amarillo → verde
         let colorBarra;
         if (porcentaje < 40)      colorBarra = 'var(--color-peligro)';
         else if (porcentaje < 75) colorBarra = 'var(--color-advertencia)';
@@ -158,7 +151,6 @@ export class DashboardManager {
             </div>
         `;
 
-        // Animación: iniciar desde 0 y expandir
         requestAnimationFrame(() => {
             const fill = document.getElementById('barraMetaFill');
             if (fill) {
@@ -237,8 +229,7 @@ export class DashboardManager {
     }
 
     // ─── PRÓXIMAS VISITAS DE PROVEEDORES ─────────────────────────────────
-    // NUEVO: si el proveedor tiene una Lista Frecuente guardada, se muestra
-    // un botón de acceso directo para generar el pedido sin salir del Dashboard.
+    // Un botón de acceso rápido POR CADA lista frecuente del proveedor.
     renderizarProximasVisitas() {
         const contenedor = document.getElementById('proximasVisitas');
         if (!contenedor) return;
@@ -307,13 +298,16 @@ export class DashboardManager {
                 infoProgramacion = `<small style="color:#718096;">📅 Fecha manual</small>`;
             }
 
-            // ── NUEVO: acceso rápido a Lista Frecuente ──
-            const tieneListaFrecuente = (p.listaFrecuente || []).length > 0;
-            const botonFrecuente = (tieneListaFrecuente && puedeGestionarPedidos)
-                ? `<button class="btn btn-success" style="padding:5px 10px;font-size:11px;margin-top:6px;"
-                       onclick="window.appInstance.crearPedidoRapidoFrecuente('${p.id}')">
-                       ⭐ Pedido Frecuente
-                   </button>`
+            const listasFrecuentes  = p.listasFrecuentes || [];
+            const botonesFrecuentes = (listasFrecuentes.length > 0 && puedeGestionarPedidos)
+                ? `<div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:4px;">
+                       ${listasFrecuentes.map(l => `
+                           <button class="btn btn-success" style="padding:5px 10px;font-size:11px;"
+                               onclick="window.appInstance.crearPedidoRapidoFrecuente('${p.id}','${l.id}')">
+                               ⭐ ${l.nombre}
+                           </button>
+                       `).join('')}
+                   </div>`
                 : '';
 
             return `
@@ -324,7 +318,7 @@ export class DashboardManager {
                         <strong>${p.nombre}</strong>
                         <br>${infoProgramacion}
                         ${p.telefono ? `<br><small style="color:#718096;">📞 ${p.telefono}</small>` : ''}
-                        ${botonFrecuente}
+                        ${botonesFrecuentes}
                     </div>
                     <div style="text-align:right;min-width:90px;">
                         <div style="font-weight:700;font-size:14px;color:${esHoy ? '#2b6cb0' : '#4a5568'};">

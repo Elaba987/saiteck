@@ -7,13 +7,11 @@ export class PedidosManager {
     constructor() {
         this.pedidos = [];
         this.unsubscribe = null;
-        this._auditoria      = null;
-        this._productosManager = null; // ── NUEVO: para actualizar stock al recibir ──
+        this._auditoria        = null;
+        this._productosManager = null; // solo para aumentarStock() al recibir
     }
 
     setAuditoriaManager(mgr) { this._auditoria = mgr; }
-
-    /** NUEVO — necesario para aumentar stock y sincronizar precio de compra al recibir un pedido */
     setProductosManager(mgr) { this._productosManager = mgr; }
 
     async cargarPedidos() {
@@ -89,11 +87,8 @@ export class PedidosManager {
     }
 
     /**
-     * NUEVO — Sobrescribe por completo los items de un pedido PENDIENTE.
-     * Usado para "editar pedido" (agregar/quitar productos, cambiar cantidades)
-     * antes de que llegue el proveedor.
-     * @param {string} pedidoId
-     * @param {Array}  itemsCatalogo - [{ productoClave, productoNombre, precioCompra, cantidad }]
+     * Sobrescribe por completo los items de un pedido PENDIENTE.
+     * Usado para "editar pedido" antes de que llegue el proveedor.
      */
     async actualizarItemsPedido(pedidoId, itemsCatalogo = []) {
         const pedido = this.obtenerPorId(pedidoId);
@@ -162,7 +157,6 @@ export class PedidosManager {
             return { success: false, message: 'Pedido no encontrado' };
         }
 
-        // Crear nuevo pedido con los mismos items
         return await this.crearPedido(
             pedido.proveedorId,
             pedido.proveedorNombre,
@@ -179,24 +173,27 @@ export class PedidosManager {
     }
 
     // ═══════════════════════════════════════════════════════════════
-    // RECEPCIÓN DE PEDIDO (checklist) — REDISEÑADO
+    // RECEPCIÓN DE PEDIDO (checklist)
     //
-    // Al "completar" un pedido, el usuario revisa un checklist con cada
-    // producto: puede desmarcar los que NO llegaron, ajustar la cantidad
-    // realmente recibida y el precio de compra real pagado. Solo los
-    // productos marcados como recibidos:
-    //   1. Se suman al stock del producto correspondiente (Productos).
-    //   2. Si el precio de compra real difiere del registrado en
-    //      Productos, se actualiza ahí también (mismo origen de datos).
-    //   3. Quedan guardados en el pedido con el total recalculado.
+    // IMPORTANTE — lógica de precios corregida:
+    // El precio de compra que se ajusta al recibir (porque llegó distinto
+    // a como se pidió) queda registrado ÚNICAMENTE dentro de este pedido
+    // (itemsFinales[].precioCompra). Ese valor es el que usan el
+    // Historial de Compras y el Reporte de Compras/Salidas para ESTE
+    // pedido en particular. NO se modifica el precioCompra del producto
+    // maestro en Productos — así el costo de venta (ganancia) de todo lo
+    // demás en el sistema no se ve afectado por un ajuste puntual de una
+    // sola recepción.
+    //
+    // Solo se toca Productos para UNA cosa: sumar la cantidad recibida al
+    // stock (aumentarStock).
     // ═══════════════════════════════════════════════════════════════
 
     /**
      * @param {string} pedidoId
      * @param {Array|null} itemsRecibidos - checklist resultante:
      *        [{ productoClave, productoNombre, cantidad, precioCompra, recibido }]
-     *        Si es null, se asume que TODO el pedido llegó tal cual fue creado
-     *        (atajo "marcar todo como completado").
+     *        Si es null, se asume que TODO el pedido llegó tal cual fue creado.
      */
     async completarPedido(pedidoId, itemsRecibidos = null) {
         const pedido = this.obtenerPorId(pedidoId);
@@ -230,7 +227,7 @@ export class PedidosManager {
             return { success: false, message: 'Debes marcar al menos un producto como recibido' };
         }
 
-        const nuevoTotal = itemsFinales.reduce((sum, i) => sum + i.subtotal, 0);
+        const nuevoTotal      = itemsFinales.reduce((sum, i) => sum + i.subtotal, 0);
         const fechaCompletado = new Date().toISOString();
 
         const resultado = await StorageManager.update('pedidos', pedidoId, {
@@ -244,15 +241,12 @@ export class PedidosManager {
             return { success: false, message: 'Error al completar pedido' };
         }
 
-        // ── Sincronizar con Productos: aumentar stock y (si cambió) precio de compra ──
+        // ── Actualizar SOLO stock (nunca el precio maestro de Productos) ──
+        const productosNoActualizados = [];
         if (this._productosManager) {
             for (const item of itemsFinales) {
-                await this._productosManager.aumentarStock(item.productoClave, item.cantidad);
-
-                const productoActual = this._productosManager.obtenerPorClave(item.productoClave);
-                if (productoActual && productoActual.precioCompra !== item.precioCompra) {
-                    await this._productosManager.actualizar(productoActual.id, { precioCompra: item.precioCompra });
-                }
+                const r = await this._productosManager.aumentarStock(item.productoClave, item.cantidad);
+                if (!r.success) productosNoActualizados.push(item.productoNombre);
             }
         }
 
@@ -268,14 +262,15 @@ export class PedidosManager {
 
         return {
             success: true,
-            pedido: { ...pedido, items: itemsFinales, total: nuevoTotal, completado: true, fechaCompletado }
+            pedido: { ...pedido, items: itemsFinales, total: nuevoTotal, completado: true, fechaCompletado },
+            productosNoActualizados
         };
     }
 
     // ═══════════════════════════════════════════════════════════════
-    // PEDIDO DESDE CATÁLOGO DEL PROVEEDOR
+    // PEDIDO DESDE CATÁLOGO / LISTA FRECUENTE
     // itemsCatalogo debe venir ya resuelto (nombre/precio en vivo desde
-    // ProductosManager) — normalmente construido en app.js.
+    // ProductosManager) — se construye en app.js.
     // ═══════════════════════════════════════════════════════════════
 
     async crearPedidoDesdeCatalogo(proveedor, itemsCatalogo = []) {
@@ -325,6 +320,8 @@ export class PedidosManager {
 
     // ═══════════════════════════════════════════════════════════════
     // REPORTES DE COMPRAS
+    // Siempre lee this.pedidos (mantenido en vivo por iniciarEscucha),
+    // así que refleja de inmediato cualquier pedido recién completado.
     // ═══════════════════════════════════════════════════════════════
 
     generarReporteCompras(tipo, parametros = {}, proveedorId = null) {
