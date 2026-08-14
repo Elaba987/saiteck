@@ -1,5 +1,7 @@
 // auditoria.js - Módulo para registro de auditoría de operaciones CRUD
 
+import { descargarArchivoTexto } from './descargas.js';
+
 // ─────────────────────────────────────────────────────────────────────────────
 // CATÁLOGO DE TIPOS DE OPERACIÓN
 // ─────────────────────────────────────────────────────────────────────────────
@@ -293,17 +295,11 @@ export class AuditoriaManager {
             ];
         });
 
-        const contenido = [encabezado, ...filas].map(f => f.join(',')).join('\n');
-        const blob = new Blob(['\uFEFF' + contenido], { type: 'text/csv;charset=utf-8;' });
-        const url  = URL.createObjectURL(blob);
-        const a    = document.createElement('a');
-        const hoy  = new Date();
+        const contenido     = [encabezado, ...filas].map(f => f.join(',')).join('\n');
+        const hoy           = new Date();
+        const nombreArchivo = `AUDITORIA_${hoy.getDate()}-${hoy.getMonth()+1}-${hoy.getFullYear()}.csv`;
 
-        a.href     = url;
-        a.download = `AUDITORIA_${hoy.getDate()}-${hoy.getMonth()+1}-${hoy.getFullYear()}.csv`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
+        // Prefijo BOM (\uFEFF) para que Excel detecte UTF-8 correctamente
+        descargarArchivoTexto('\uFEFF' + contenido, nombreArchivo, 'text/csv;charset=utf-8;');
     }
 }

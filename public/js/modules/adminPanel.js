@@ -2,6 +2,20 @@
 
 import { TIPOS_OPERACION, CATEGORIAS_OPERACION } from './auditoria.js';
 
+// Íconos por categoría, usados tanto en las tarjetas de estadísticas como en
+// los chips de filtro. Debe mantenerse en sincronía con las categorías
+// declaradas en CATEGORIAS_OPERACION (auditoria.js).
+const CATEGORIA_ICONOS = {
+    'Productos':     '📦',
+    'Ventas':        '💰',
+    'Proveedores':   '🚚',
+    'Pedidos':       '🛒',
+    'Terminales':    '🖥️',
+    'Usuarios':      '👤',
+    'Sesión':        '🔑',
+    'Configuración': '⚙️'
+};
+
 export class AdminPanelManager {
     constructor(auditoriaManager, usuariosManager) {
         this.auditoriaManager = auditoriaManager;
@@ -339,16 +353,6 @@ export class AdminPanelManager {
         const contenedor = document.getElementById('adminStatsCards');
         if (!contenedor) return;
 
-        const categoriaIconos = {
-            'Productos':     '📦',
-            'Ventas':        '💰',
-            'Proveedores':   '🚚',
-            'Pedidos':       '🛒',
-            'Usuarios':      '👤',
-            'Sesión':        '🔑',
-            'Configuración': '⚙️'
-        };
-
         const topCats = Object.entries(stats.porCategoria)
             .sort((a, b) => b[1] - a[1])
             .slice(0, 4);
@@ -377,7 +381,7 @@ export class AdminPanelManager {
             <!-- Por categoría -->
             ${topCats.map(([cat, cnt]) => `
                 <div class="admin-stat-card">
-                    <div class="admin-stat-icon">${categoriaIconos[cat] || '⚙️'}</div>
+                    <div class="admin-stat-icon">${CATEGORIA_ICONOS[cat] || '⚙️'}</div>
                     <div class="admin-stat-info">
                         <div class="admin-stat-value">${cnt}</div>
                         <div class="admin-stat-label">${cat}</div>
@@ -555,15 +559,6 @@ export class AdminPanelManager {
     }
 
     _iconoCategoria(cat) {
-        const iconos = {
-            'Productos':     '📦',
-            'Ventas':        '💰',
-            'Proveedores':   '🚚',
-            'Pedidos':       '🛒',
-            'Usuarios':      '👤',
-            'Sesión':        '🔑',
-            'Configuración': '⚙️'
-        };
-        return iconos[cat] || '⚙️';
+        return CATEGORIA_ICONOS[cat] || '⚙️';
     }
 }

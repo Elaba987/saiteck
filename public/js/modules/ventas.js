@@ -1,6 +1,7 @@
 // ventas.js - Módulo para gestión de ventas con Firestore
 
 import { StorageManager, STORAGE_KEYS } from './storage.js';
+import { descargarArchivoTexto } from './descargas.js';
 
 export class VentasManager {
     constructor() {
@@ -259,18 +260,11 @@ CAMBIO: $${venta.cambio ? venta.cambio.toFixed(2) : '0.00'}
     }
 
     descargarTicket(venta, numeroTicket) {
-        const contenido = this.generarTicket(venta, numeroTicket);
-        const blob  = new Blob([contenido], { type: 'text/plain' });
-        const url   = URL.createObjectURL(blob);
-        const a     = document.createElement('a');
-        const fecha = new Date(venta.fecha);
+        const contenido     = this.generarTicket(venta, numeroTicket);
+        const fecha         = new Date(venta.fecha);
+        const nombreArchivo = `TICKET_${numeroTicket}_${fecha.getDate()}-${fecha.getMonth()+1}-${fecha.getFullYear()}_${fecha.getHours()}-${fecha.getMinutes()}.txt`;
 
-        a.href     = url;
-        a.download = `TICKET_${numeroTicket}_${fecha.getDate()}-${fecha.getMonth()+1}-${fecha.getFullYear()}_${fecha.getHours()}-${fecha.getMinutes()}.txt`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
+        descargarArchivoTexto(contenido, nombreArchivo);
 
         this._auditoria?.registrar('VENTA_TICKET_DESCARGADO', {
             ticket: `#${numeroTicket}`,

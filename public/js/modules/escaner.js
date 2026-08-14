@@ -16,6 +16,11 @@ export class EscanerManager {
         this._soportaZoom  = false;
         this._soportaFlash = false;
         this._soportaFoco  = false;
+
+        // AudioContext reutilizable para el beep de confirmación (evita
+        // crear un contexto nuevo — y nunca cerrarlo — cada vez que se
+        // escanea un código; se crea una sola vez, de forma perezosa).
+        this._audioCtx = null;
     }
 
     // ─── API PÚBLICA ────────────────────────────────────────────────────
@@ -331,7 +336,16 @@ export class EscanerManager {
 
     _beep() {
         try {
-            const ctx  = new (window.AudioContext || window.webkitAudioContext)();
+            // Se reutiliza un único AudioContext para todos los beeps del
+            // escáner en vez de instanciar uno nuevo cada vez (los navegadores
+            // limitan la cantidad de AudioContext simultáneos y el código
+            // original nunca los cerraba, acumulándolos en cada escaneo).
+            if (!this._audioCtx) {
+                this._audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            const ctx = this._audioCtx;
+            if (ctx.state === 'suspended') ctx.resume();
+
             const osc  = ctx.createOscillator();
             const gain = ctx.createGain();
             osc.connect(gain);

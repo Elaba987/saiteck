@@ -119,30 +119,6 @@ window.mostrarApp              = mostrarApp;
 window.mostrarSeleccionPerfil  = mostrarSeleccionPerfil;
 
 // ─────────────────────────────────────────────────────────────
-// Inicialización del botón de logout del sidebar
-// ─────────────────────────────────────────────────────────────
-function inicializarLogout() {
-  setTimeout(() => {
-    const btnLogout = document.getElementById('btnLogout');
-    if (btnLogout && !btnLogout.hasAttribute('data-initialized')) {
-      btnLogout.setAttribute('data-initialized', 'true');
-
-      btnLogout.addEventListener('click', async (e) => {
-        e.preventDefault();
-        if (confirm('¿Cerrar sesión?')) {
-          try {
-            await window.auth.signOut();
-          } catch (error) {
-            console.error('Error al cerrar sesión:', error);
-            alert('Error al cerrar sesión: ' + error.message);
-          }
-        }
-      });
-    }
-  }, 500);
-}
-
-// ─────────────────────────────────────────────────────────────
 // DOMContentLoaded: login y logout desde pantalla de perfiles
 // ─────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {

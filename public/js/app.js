@@ -146,6 +146,24 @@ class TiendaApp {
             this.pedidosManager.setAuditoriaManager(this.auditoriaManager);
             this.pedidosManager.setProductosManager(this.productosManager);
 
+            // ── Limpieza de la sesión de perfil anterior ──
+            // Las instancias de los managers (productos, ventas, proveedores,
+            // terminales, pedidos) se reutilizan durante toda la vida de la
+            // pestaña. Si el usuario usa "Cambiar Perfil" (sin recargar la
+            // página), este método vuelve a ejecutarse y antes llamaba de
+            // nuevo a iniciarEscucha() sobre las MISMAS instancias sin haber
+            // cancelado la suscripción de Firestore anterior: cada cambio de
+            // perfil dejaba una suscripción en tiempo real "huérfana" activa
+            // y abría otra encima, acumulando listeners duplicados (más
+            // lecturas de Firestore de las necesarias y renders repetidos).
+            this.productosManager.detenerEscucha();
+            this.ventasManager.detenerEscucha();
+            this.proveedoresManager.detenerEscucha();
+            this.proveedoresManager.detenerEscuchaVisitas();
+            this.terminalesManager.detenerEscucha();
+            this.pedidosManager.detenerEscucha();
+            this.adminPanelManager?.desactivar();
+
             this.adminPanelManager = new AdminPanelManager(
                 this.auditoriaManager,
                 this.usuariosManager
@@ -466,6 +484,7 @@ class TiendaApp {
                 if (seccion === 'dashboard')      this.actualizarDashboard();
                 if (seccion === 'reportes')       this.mostrarOpcionesReporte();
                 if (seccion === 'administracion') this._activarAdminPanel();
+                else                               this.adminPanelManager?.desactivar();
                 if (seccion === 'configuracion')  this._actualizarVistaTerminales();
                 if (seccion === 'proveedores')    this.actualizarVistaPedidos();
             }
@@ -862,17 +881,6 @@ class TiendaApp {
         this.uiManager.renderizarListaVenta(items, contenedor);
         this.uiManager.actualizarTotalVenta(this.ventasManager.calcularTotal(), totalElemento);
         this.calcularCambio();
-    }
-
-    modificarCantidadCarrito(index, nuevaCantidad) {
-        const item = this.ventasManager.obtenerVentaActual()[index];
-        if (!item) return;
-        if (nuevaCantidad > item.producto.stock) {
-            this.uiManager.alerta(`Stock insuficiente. Máximo: ${item.producto.stock}`);
-            return;
-        }
-        const cambio = nuevaCantidad - item.cantidad;
-        if (cambio !== 0) { this.ventasManager.modificarCantidadItem(index, cambio); this.actualizarVistaVentaActual(); }
     }
 
     aumentarCantidadCarrito(index) {
@@ -1293,9 +1301,6 @@ class TiendaApp {
         document.getElementById('tipoReparto').addEventListener('change', () => this.toggleTipoReparto());
         this.establecerFechasMinimas();
         document.getElementById('buscarProveedor').addEventListener('input', () => this.actualizarVistaProveedores());
-
-        const ordenarProv = document.getElementById('ordenarProveedores');
-        if (ordenarProv) ordenarProv.addEventListener('change', () => this.actualizarVistaProveedores());
 
         document.getElementById('tablaProveedores').addEventListener('click', (e) => {
             const btn = e.target.closest('button');

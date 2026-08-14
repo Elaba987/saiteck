@@ -1,6 +1,7 @@
 // productos.js - Módulo para gestión de productos con Firestore
 
 import { StorageManager, STORAGE_KEYS } from './storage.js';
+import { descargarArchivoTexto } from './descargas.js';
 
 export class ProductosManager {
     constructor() {
@@ -226,7 +227,7 @@ export class ProductosManager {
      * de proveedor). Complemento de reducirStock().
      *
      * @param {number|string} clave    - clave del producto
-     * @param {number}        cantidad - cantidad a sumar (unidades o gramos si es granel;
+     * @param {number}        cantidad - cantidad a sumar (unidades o kg si es granel;
      *                                   pedidos.js siempre trabaja con unidades/kg enteros,
      *                                   no con gramos, así que aquí se suma tal cual)
      */
@@ -286,17 +287,10 @@ Valor de inventario (venta): $${totalVenta.toFixed(2)}
     }
 
     descargarArchivoAlmacen() {
-        const contenido = this.generarArchivoAlmacen();
-        const blob = new Blob([contenido], { type: 'text/plain' });
-        const url  = URL.createObjectURL(blob);
-        const a    = document.createElement('a');
-        const fecha = new Date();
+        const contenido     = this.generarArchivoAlmacen();
+        const fecha         = new Date();
+        const nombreArchivo = `ALMACEN_${fecha.getDate()}-${fecha.getMonth()+1}-${fecha.getFullYear()}_${fecha.getHours()}-${fecha.getMinutes()}.txt`;
 
-        a.href     = url;
-        a.download = `ALMACEN_${fecha.getDate()}-${fecha.getMonth()+1}-${fecha.getFullYear()}_${fecha.getHours()}-${fecha.getMinutes()}.txt`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
+        descargarArchivoTexto(contenido, nombreArchivo);
     }
 }

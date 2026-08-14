@@ -2,6 +2,7 @@
 
 import { StorageManager } from './storage.js';
 import { filtrarPorPeriodo, tituloPeriodo } from './fechasUtil.js';
+import { descargarArchivoTexto } from './descargas.js';
 
 export class PedidosManager {
     constructor() {
@@ -242,6 +243,10 @@ export class PedidosManager {
         }
 
         // ── Actualizar SOLO stock (nunca el precio maestro de Productos) ──
+        // Se hace secuencialmente (no en paralelo) porque aumentarStock() lee
+        // el stock actual en memoria antes de escribir: si dos items del mismo
+        // pedido compartieran clave, ejecutarlos en paralelo podría perder un
+        // incremento (ambos leerían el mismo stock inicial).
         const productosNoActualizados = [];
         if (this._productosManager) {
             for (const item of itemsFinales) {
@@ -379,18 +384,11 @@ TOTAL GASTADO: $${reporte.totalCompras.toFixed(2)}
     }
 
     descargarReporteCompras(reporte) {
-        const contenido = this.generarTextoReporteCompras(reporte);
-        const blob = new Blob([contenido], { type: 'text/plain' });
-        const url  = URL.createObjectURL(blob);
-        const a    = document.createElement('a');
-        const fecha = new Date();
+        const contenido     = this.generarTextoReporteCompras(reporte);
+        const fecha         = new Date();
+        const nombreArchivo = `REPORTE_COMPRAS_${fecha.getDate()}-${fecha.getMonth()+1}-${fecha.getFullYear()}.txt`;
 
-        a.href     = url;
-        a.download = `REPORTE_COMPRAS_${fecha.getDate()}-${fecha.getMonth()+1}-${fecha.getFullYear()}.txt`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
+        descargarArchivoTexto(contenido, nombreArchivo);
 
         this._auditoria?.registrar('PEDIDO_REPORTE_EXPORTADO', {
             titulo:  reporte.titulo,
@@ -424,17 +422,10 @@ TOTAL: $${pedido.total.toFixed(2)}
     }
 
     descargarTicketPedido(pedido) {
-        const contenido = this.generarTicketPedido(pedido);
-        const blob = new Blob([contenido], { type: 'text/plain' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        const fecha = new Date(pedido.fechaCompletado || pedido.fechaCreacion);
+        const contenido     = this.generarTicketPedido(pedido);
+        const fecha         = new Date(pedido.fechaCompletado || pedido.fechaCreacion);
+        const nombreArchivo = `PEDIDO_${pedido.proveedorNombre.replace(/\s+/g, '_')}_${fecha.getDate()}-${fecha.getMonth() + 1}-${fecha.getFullYear()}.txt`;
 
-        a.href = url;
-        a.download = `PEDIDO_${pedido.proveedorNombre.replace(/\s+/g, '_')}_${fecha.getDate()}-${fecha.getMonth() + 1}-${fecha.getFullYear()}.txt`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
+        descargarArchivoTexto(contenido, nombreArchivo);
     }
 }
